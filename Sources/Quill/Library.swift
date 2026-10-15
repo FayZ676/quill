@@ -83,6 +83,8 @@ final class AppState: ObservableObject {
 
     @Published var renameTarget: URL?
     @Published var renameText = ""
+    /// Folders open in the sidebar.
+    @Published var expanded: Set<URL> { didSet { defaults.set(expanded.map(\.path), forKey: "expanded") } }
 
     /// Kept separate so per-keystroke word counts don't re-render the sidebar.
     let stats = Stats()
@@ -90,7 +92,8 @@ final class AppState: ObservableObject {
     weak var textView: FocusTextView?
     /// Installed by the editor; writes any unsaved text to disk.
     var flushSave: () -> Void = {}
-    var focusEditorOnOpen = false
+    /// A just-created file is being named; the editor takes over once that's done.
+    private var namingNewFile = false
     private var watcher: FolderWatcher?
 
     private init() {
@@ -100,6 +103,7 @@ final class AppState: ObservableObject {
         let size = defaults.double(forKey: "fontSize")
         fontSize = size > 0 ? size : Self.defaultFontSize
         editorFont = EditorFont(rawValue: defaults.string(forKey: "editorFont") ?? "") ?? .duo
+        expanded = Set((defaults.stringArray(forKey: "expanded") ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) })
 
         if let path = defaults.string(forKey: "root"), FileManager.default.fileExists(atPath: path) {
             root = URL(fileURLWithPath: path, isDirectory: true)
@@ -172,27 +176,42 @@ final class AppState: ObservableObject {
         let url = uniqueURL(in: dir ?? targetDirectory, base: "Untitled", ext: "md", isDirectory: false)
         do { try Data().write(to: url) } catch { return present(error) }
         reloadTree()
-        focusEditorOnOpen = true
+        expandAncestors(of: url)
         selection = url
+        beginRename(url)
+        namingNewFile = true
     }
 
     func newFolder(in dir: URL? = nil) {
         let url = uniqueURL(in: dir ?? targetDirectory, base: "New Folder", ext: nil, isDirectory: true)
         do { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false) } catch { return present(error) }
         reloadTree()
+        expandAncestors(of: url)
         selection = url
         beginRename(url)
     }
 
     func beginRename(_ url: URL) {
+        namingNewFile = false
         renameText = url.hasDirectoryPath ? url.lastPathComponent : FileNode.displayName(url)
         renameTarget = url
+    }
+
+    func cancelRename() {
+        guard renameTarget != nil else { return }
+        renameTarget = nil
+        renameEnded()
     }
 
     func commitRename() {
         guard let old = renameTarget else { return }
         renameTarget = nil
-        var name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        rename(old, to: renameText)
+        renameEnded()
+    }
+
+    func rename(_ old: URL, to newName: String) {
+        var name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !name.contains("/") else { return }
         let isDir = old.hasDirectoryPath
         if !isDir, (name as NSString).pathExtension.isEmpty, !old.pathExtension.isEmpty {
@@ -202,12 +221,41 @@ final class AppState: ObservableObject {
         guard new != old else { return }
         flushSave()
         do { try FileManager.default.moveItem(at: old, to: new) } catch { return present(error) }
-        if let open = openFile, let moved = rebase(open, from: old, to: new) {
-            openFile = moved
-            defaults.set(moved.path, forKey: "lastFile")
-        }
-        if let sel = selection, let moved = rebase(sel, from: old, to: new) { selection = moved }
+        relocate(old, to: new)
         reloadTree()
+    }
+
+    /// Moves a library item into `dir`, or copies it in when it comes from outside the library.
+    func move(_ item: URL, into dir: URL) {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir) else { return }
+        let src = URL(fileURLWithPath: item.path, isDirectory: isDir.boolValue)
+        let dest = dir.appendingPathComponent(src.lastPathComponent, isDirectory: isDir.boolValue)
+        guard src.deletingLastPathComponent().path != dir.path, src.path != dir.path, !isInside(dir, src) else { return }
+        flushSave()
+        let external = !isInside(src, root)
+        do {
+            if external {
+                try FileManager.default.copyItem(at: src, to: dest)
+            } else {
+                try FileManager.default.moveItem(at: src, to: dest)
+            }
+        } catch { return present(error) }
+        if !external { relocate(src, to: dest) }
+        expandAncestors(of: dest)
+        reloadTree()
+    }
+
+    /// Handles file URLs dropped on the sidebar.
+    func drop(_ providers: [NSItemProvider], into dir: URL) -> Bool {
+        let files = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        for provider in files {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async { self.move(url, into: dir) }
+            }
+        }
+        return !files.isEmpty
     }
 
     func trash(_ url: URL) {
@@ -222,7 +270,39 @@ final class AppState: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    func focusEditor() {
+        guard let tv = textView else { return }
+        tv.window?.makeFirstResponder(tv)
+    }
+
     // MARK: Private
+
+    private func renameEnded() {
+        guard namingNewFile else { return }
+        namingNewFile = false
+        // Let the sidebar drop its text field before the editor takes focus.
+        DispatchQueue.main.async { [weak self] in self?.focusEditor() }
+    }
+
+    private func expandAncestors(of url: URL) {
+        var folders: [URL] = []
+        var dir = url.deletingLastPathComponent()
+        while isInside(dir, root) {
+            folders.append(dir)
+            dir = dir.deletingLastPathComponent()
+        }
+        expanded.formUnion(folders)
+    }
+
+    /// Follows a renamed or moved item with the open file, selection and open folders.
+    private func relocate(_ old: URL, to new: URL) {
+        if let open = openFile, let moved = rebase(open, from: old, to: new) {
+            openFile = moved
+            defaults.set(moved.path, forKey: "lastFile")
+        }
+        if let sel = selection, let moved = rebase(sel, from: old, to: new) { selection = moved }
+        expanded = Set(expanded.map { rebase($0, from: old, to: new) ?? $0 })
+    }
 
     private func selectionChanged() {
         guard let url = selection, !url.hasDirectoryPath, url != openFile else { return }
@@ -285,6 +365,7 @@ final class AppState: ObservableObject {
 
     - ⌘N creates a new document, ⇧⌘N a new folder
     - ⌘O picks a different folder as your library
+    - Drag files and folders in the sidebar to move them
     - Right-click a file in the sidebar to rename, reveal or trash it
     - ⌃⌘S shows or hides the library
 

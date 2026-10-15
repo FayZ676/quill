@@ -22,6 +22,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         Fonts.registerBundled()
+        // In full screen the title bar tucks away and drops down when the mouse reaches the top.
+        NotificationCenter.default.addObserver(forName: NSWindow.didEnterFullScreenNotification,
+                                               object: nil, queue: .main) { _ in
+            NSApp.presentationOptions = [.fullScreen, .autoHideToolbar, .autoHideMenuBar]
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -80,6 +85,9 @@ struct QuillCommands: Commands {
             }
             Toggle("Typewriter Scrolling", isOn: $state.typewriter)
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+            Divider()
+            Button("Collapse All Folders") { state.expanded = [] }
+                .disabled(state.expanded.isEmpty)
             Divider()
             Picker("Font", selection: $state.editorFont) {
                 ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }

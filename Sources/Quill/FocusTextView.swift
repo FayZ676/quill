@@ -19,14 +19,38 @@ final class FocusTextView: NSTextView {
     private static let margin: CGFloat = 32
     private static let verticalInset: CGFloat = 72
 
-    /// AppKit sizes the caret to the whole line fragment, which includes the line spacing
-    /// below the text. Trim it to the font's own line height so it matches the glyphs.
+    private static let caretWidth: CGFloat = 2.5
+    private static let caretGlow: CGFloat = 6
+
+    /// A thick, softly glowing caret, iA-style. AppKit sizes the caret to the whole line
+    /// fragment, which includes the line spacing below the text, so it's trimmed to the
+    /// font's own line height to match the glyphs.
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
         var caret = rect
+        caret.size.width = Self.caretWidth
         if let lm = layoutManager {
             caret.size.height = min(rect.height, lm.defaultLineHeight(for: fonts.regular))
         }
-        super.drawInsertionPoint(in: caret, color: color, turnedOn: flag)
+        guard flag else {
+            // Blinking off: repaint the glow's whole footprint, not just the 1pt system caret.
+            return setNeedsDisplay(caret.insetBy(dx: -2 * Self.caretGlow, dy: -2 * Self.caretGlow))
+        }
+        NSGraphicsContext.saveGraphicsState()
+        let glow = NSShadow()
+        glow.shadowColor = color.withAlphaComponent(0.85)
+        glow.shadowBlurRadius = Self.caretGlow
+        glow.shadowOffset = .zero
+        glow.set()
+        color.setFill()
+        NSBezierPath(roundedRect: caret, xRadius: 1, yRadius: 1).fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// AppKit invalidates only the thin system caret's rect when it blinks or moves; widen
+    /// that so the glow is redrawn and erased with it.
+    override func setNeedsDisplay(_ invalidRect: NSRect, avoidAdditionalLayout flag: Bool) {
+        super.setNeedsDisplay(invalidRect.insetBy(dx: -2 * Self.caretGlow, dy: -2 * Self.caretGlow),
+                              avoidAdditionalLayout: flag)
     }
 
     override var textContainerOrigin: NSPoint {

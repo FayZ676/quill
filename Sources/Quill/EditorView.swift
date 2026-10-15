@@ -40,7 +40,7 @@ struct EditorView: NSViewRepresentable {
         storage.delegate = context.coordinator.highlighter
         tv.delegate = context.coordinator
 
-        let scroll = NSScrollView()
+        let scroll = PageScrollView()
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = true
@@ -58,6 +58,14 @@ struct EditorView: NSViewRepresentable {
 
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: EditorCoordinator) {
         coordinator.save()
+    }
+}
+
+/// Clicks anywhere on the page reach the text, not just those on the text column itself.
+final class PageScrollView: NSScrollView {
+    override func mouseDown(with event: NSEvent) {
+        guard let tv = documentView as? NSTextView, tv.isEditable else { return super.mouseDown(with: event) }
+        tv.mouseDown(with: event)
     }
 }
 
@@ -124,10 +132,6 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         let text = read(newURL) ?? ""
         diskDate = modificationDate(newURL)
         tv.isEditable = true
-        if state.focusEditorOnOpen {
-            state.focusEditorOnOpen = false
-            tv.window?.makeFirstResponder(tv)
-        }
         // A rename moves the open file without changing it: keep caret and undo history.
         if hadDocument && text == tv.string { return }
         load(text)
