@@ -4,14 +4,27 @@ struct ContentView: View {
     @EnvironmentObject var state: AppState
     @State private var columns: NavigationSplitViewVisibility = .all
     @State private var sidebarShownForRename = false
+    @State private var fullScreen = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            SidebarView(showsActions: columns != .detailOnly)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
-                // The page color, not the translucent sidebar material, so the whole window
-                // reads as one surface.
-                .background(Color(nsColor: Theme.background).ignoresSafeArea())
+            // Stacked rather than inset: the list scrolls under an inset and its top rows
+            // would be stuck there.
+            VStack(spacing: 0) {
+                if fullScreen {
+                    HStack(spacing: 6) {
+                        SidebarToggle(columns: $columns)
+                        SidebarActions()
+                        Spacer()
+                    }
+                    .modifier(FullScreenBar(chrome: state.chrome))
+                }
+                SidebarView(columns: $columns, showsActions: columns != .detailOnly && !fullScreen)
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
+            // The page color, not the translucent sidebar material, so the whole window
+            // reads as one surface.
+            .background(Color(nsColor: Theme.background).ignoresSafeArea())
         } detail: {
             ZStack(alignment: .bottom) {
                 EditorView(state: state)
@@ -22,6 +35,11 @@ struct ContentView: View {
             }
             .background(Color(nsColor: Theme.background).ignoresSafeArea())
             .ignoresSafeArea(.container, edges: .bottom)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if fullScreen {
+                    DetailBar(columns: $columns).modifier(FullScreenBar(chrome: state.chrome))
+                }
+            }
             // Let the page color run up through the toolbar, so the faded title bar leaves no band.
             .toolbarBackground(.hidden, for: .windowToolbar)
         }
@@ -38,15 +56,23 @@ struct ContentView: View {
         .modifier(HideSystemTitle())
         .toolbar {
             ToolbarItem(placement: .principal) {
-                if let file = state.openFile { TitleField(file: file) }
+                if let file = state.openFile, !fullScreen { TitleField(file: file) }
             }
             ToolbarItemGroup {
-                Button { state.focusEnabled.toggle() } label: {
-                    Image(systemName: state.focusEnabled ? "eye.circle.fill" : "eye.circle")
-                        .foregroundStyle(state.focusEnabled ? Color.accentColor : Color.secondary)
-                }
-                .help("Focus Mode (⇧⌘D)")
+                if !fullScreen { FocusToggle() }
             }
+        }
+        // A toolbar shares its bar with the window buttons, and in full screen they'd hide
+        // together. So there the toolbar goes, macOS gives the window buttons their own bar
+        // that drops down with the menu bar, and Quill's controls stay put in a bar of its own.
+        // (SwiftUI's .toolbar(.hidden) would take the window buttons with it.)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) {
+            ($0.object as? NSWindow)?.toolbar?.isVisible = false
+            fullScreen = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) {
+            ($0.object as? NSWindow)?.toolbar?.isVisible = true
+            fullScreen = false
         }
         // Renaming happens in the sidebar, so bring it out for the occasion and put it
         // back afterwards.
@@ -62,8 +88,100 @@ struct ContentView: View {
     }
 }
 
+/// The writing column's half of the full-screen bar. The title centers over the text, like
+/// the word count below it; the sidebar toggle moves here when the sidebar is away.
+private struct DetailBar: View {
+    @EnvironmentObject var state: AppState
+    @Binding var columns: NavigationSplitViewVisibility
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if columns == .detailOnly { SidebarToggle(columns: $columns) }
+            Spacer()
+            FocusToggle()
+        }
+        .overlay {
+            if let file = state.openFile { TitleField(file: file) }
+        }
+    }
+}
+
+/// Quill's toolbar, drawn in the window for full screen, one half over each column.
+private struct FullScreenBar: ViewModifier {
+    @ObservedObject var chrome: ChromeFader
+
+    func body(content: Content) -> some View {
+        content
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .frame(height: 48)
+            .background(Color(nsColor: Theme.background))
+            // Fades with the rest of the chrome while you write.
+            .opacity(chrome.hidden ? 0 : 1)
+            .animation(.easeInOut(duration: chrome.hidden ? 0.5 : 0.2), value: chrome.hidden)
+            .allowsHitTesting(!chrome.hidden)
+    }
+}
+
+/// Stands in for the system sidebar button, which can't be made bigger to match the others.
+private struct SidebarToggle: View {
+    @Binding var columns: NavigationSplitViewVisibility
+
+    var body: some View {
+        Button {
+            withAnimation { columns = columns == .detailOnly ? .all : .detailOnly }
+        } label: {
+            Image(systemName: "sidebar.left").toolbarIcon()
+        }
+        .help("Show or Hide Sidebar (⌃⌘S)")
+    }
+}
+
+/// Swaps the system sidebar button for SidebarToggle where macOS allows it (14 and later).
+private struct OwnSidebarToggle: ViewModifier {
+    @Binding var columns: NavigationSplitViewVisibility
+
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content
+                .toolbar(removing: .sidebarToggle)
+                .toolbar {
+                    ToolbarItem(placement: .navigation) { SidebarToggle(columns: $columns) }
+                }
+        } else {
+            content
+        }
+    }
+}
+
+private struct SidebarActions: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon() }
+            .help("New File (⌘N)")
+        Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon() }
+            .help("New Folder (⇧⌘N)")
+    }
+}
+
+private struct FocusToggle: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Button { state.focusEnabled.toggle() } label: {
+            Image(systemName: state.focusEnabled ? "eye.circle.fill" : "eye.circle")
+                .toolbarIcon()
+                .foregroundStyle(state.focusEnabled ? Color.accentColor : Color.secondary)
+        }
+        .help("Focus Mode (⇧⌘D)")
+    }
+}
+
 struct SidebarView: View {
     @EnvironmentObject var state: AppState
+    @Binding var columns: NavigationSplitViewVisibility
     /// The toolbar keeps a collapsed sidebar's items around, so they go when it does.
     let showsActions: Bool
 
@@ -76,6 +194,8 @@ struct SidebarView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            // Roomy rows, like Finder's large sidebar setting, so files are easy to hit.
+            .environment(\.sidebarRowSize, .large)
             // One menu for rows and the empty space around them, which gets library-wide actions.
             .contextMenu(forSelectionType: URL.self) { items in
                 if let url = items.first {
@@ -96,14 +216,12 @@ struct SidebarView: View {
             }
         }
         // Sits in the sidebar's half of the title bar, beside the sidebar toggle.
+        .modifier(OwnSidebarToggle(columns: $columns))
         .toolbar {
             ToolbarItemGroup {
                 if showsActions {
                     Spacer()
-                    Button { state.newFile() } label: { Image(systemName: "square.and.pencil") }
-                        .help("New File (⌘N)")
-                    Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus") }
-                        .help("New Folder (⇧⌘N)")
+                    SidebarActions()
                 }
             }
         }
@@ -232,8 +350,8 @@ private struct TitleField: View {
                     .help("Click to rename")
             }
         }
-        .font(.system(size: 13, weight: .semibold))
-        .frame(minWidth: 160, maxWidth: 360)
+        .font(.system(size: 15, weight: .semibold))
+        .frame(minWidth: 160, maxWidth: 420)
         .onChange(of: file) { _ in editing = false }
     }
 
@@ -270,8 +388,8 @@ private struct TitleHider: NSViewRepresentable {
 private struct EmptyEditor: View {
     var body: some View {
         VStack(spacing: 8) {
-            Text("Nothing open").font(.title3)
-            Text("Press ⌘N to start writing").foregroundStyle(.secondary)
+            Text("Nothing open").font(.title2)
+            Text("Press ⌘N to start writing").font(.title3).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: Theme.background))
@@ -285,14 +403,21 @@ private struct WordCount: View {
     var body: some View {
         let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
         Text("\(stats.words) words · \(minutes) min read")
-            .font(.system(size: 11))
+            .font(.system(size: 13))
             .foregroundStyle(.tertiary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
             .background(Color(nsColor: Theme.background), in: Capsule())
-            .padding(.bottom, 8)
+            .padding(.bottom, 12)
             .opacity(chrome.hidden ? 0 : 1)
             .animation(.easeInOut(duration: chrome.hidden ? 0.5 : 0.2), value: chrome.hidden)
             .allowsHitTesting(false)
+    }
+}
+
+private extension Image {
+    /// Toolbar symbols at a size that's easy to see and hit; the stock ones are tiny.
+    func toolbarIcon() -> some View {
+        font(.system(size: 17, weight: .regular)).frame(minWidth: 30, minHeight: 26)
     }
 }

@@ -22,11 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         Fonts.registerBundled()
-        // In full screen the title bar tucks away and drops down when the mouse reaches the top.
-        NotificationCenter.default.addObserver(forName: NSWindow.didEnterFullScreenNotification,
-                                               object: nil, queue: .main) { _ in
-            NSApp.presentationOptions = [.fullScreen, .autoHideToolbar, .autoHideMenuBar]
-        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
