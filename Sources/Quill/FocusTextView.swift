@@ -3,7 +3,7 @@ import AppKit
 /// The writing surface: a centered column with hanging heading marks, focus dimming,
 /// typewriter scrolling and Markdown-aware editing commands.
 final class FocusTextView: NSTextView {
-    var fonts = FontSet(.duo, size: AppState.defaultFontSize)
+    var fonts = FontSet(.duo, size: Fonts.defaultSize)
     var focusEnabled = false
     var focusStyle: FocusStyle = .sentence
     var typewriter = false {
@@ -167,72 +167,25 @@ final class FocusTextView: NSTextView {
 
     // MARK: Markdown editing
 
-    private static let listPrefix = try! NSRegularExpression(
-        pattern: #"^([ \t]*)(?:([-*+])|(\d+)([.)]))[ \t]+(\[[ xX]\][ \t]+)?|^([ \t]*>[ \t]?)"#)
-
     /// Continues lists and quotes on Return; Return on an empty item ends the list.
     override func insertNewline(_ sender: Any?) {
-        let ns = string as NSString
-        let sel = selectedRange()
-        let lineRange = ns.lineRange(for: NSRange(location: sel.location, length: 0))
-        var lineEnd = NSMaxRange(lineRange)
-        if lineEnd > lineRange.location, ns.character(at: lineEnd - 1) == 10 { lineEnd -= 1 }
-        let line = ns.substring(with: NSRange(location: lineRange.location, length: lineEnd - lineRange.location)) as NSString
-
-        guard sel.length == 0,
-              let m = Self.listPrefix.firstMatch(in: line as String, range: NSRange(location: 0, length: line.length)),
-              sel.location >= lineRange.location + m.range.length
+        guard let edit = MarkdownEdits.newline(in: string, selection: selectedRange())
         else { return super.insertNewline(sender) }
-
-        if m.range.length == line.length {
-            insertText("", replacementRange: NSRange(location: lineRange.location, length: m.range.length))
-            return
-        }
-
-        func group(_ i: Int) -> String? {
-            let r = m.range(at: i)
-            return r.location == NSNotFound ? nil : line.substring(with: r)
-        }
-        let next: String
-        if let quote = group(6) {
-            next = quote
-        } else {
-            let marker = group(2) ?? "\((Int(group(3) ?? "") ?? 0) + 1)\(group(4) ?? ".")"
-            next = (group(1) ?? "") + marker + " " + (group(5) != nil ? "[ ] " : "")
-        }
-        insertText("\n" + next, replacementRange: sel)
+        apply(edit)
     }
 
     /// Wraps the selection in `marker`, or unwraps it if it is already wrapped.
     func toggleWrap(_ marker: String) {
-        let ns = string as NSString
-        let sel = selectedRange()
-        let m = (marker as NSString).length
-        let inner = ns.substring(with: sel)
-
-        if sel.length >= 2 * m, inner.hasPrefix(marker), inner.hasSuffix(marker) {
-            let unwrapped = (inner as NSString).substring(with: NSRange(location: m, length: sel.length - 2 * m))
-            replace(sel, with: unwrapped, select: NSRange(location: sel.location, length: sel.length - 2 * m))
-        } else if sel.location >= m, NSMaxRange(sel) + m <= ns.length,
-                  ns.substring(with: NSRange(location: sel.location - m, length: m)) == marker,
-                  ns.substring(with: NSRange(location: NSMaxRange(sel), length: m)) == marker {
-            replace(NSRange(location: sel.location - m, length: sel.length + 2 * m), with: inner,
-                    select: NSRange(location: sel.location - m, length: sel.length))
-        } else {
-            replace(sel, with: marker + inner + marker, select: NSRange(location: sel.location + m, length: sel.length))
-        }
+        apply(MarkdownEdits.toggleWrap(marker, in: string, selection: selectedRange()))
     }
 
     func insertLink() {
-        let sel = selectedRange()
-        let text = (string as NSString).substring(with: sel)
-        let caret = text.isEmpty ? sel.location + 1 : sel.location + (text as NSString).length + 3
-        replace(sel, with: "[\(text)]()", select: NSRange(location: caret, length: 0))
+        apply(MarkdownEdits.link(in: string, selection: selectedRange()))
     }
 
-    private func replace(_ range: NSRange, with text: String, select: NSRange) {
-        insertText(text, replacementRange: range)
-        setSelectedRange(select)
+    private func apply(_ edit: TextEdit) {
+        insertText(edit.text, replacementRange: edit.range)
+        if let selection = edit.selection { setSelectedRange(selection) }
     }
 }
 

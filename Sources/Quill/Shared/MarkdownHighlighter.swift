@@ -1,9 +1,15 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// Styles Markdown in place, iA-style: markup characters are greyed out but stay visible,
 /// headings stay the body size and hang their `#`s into the left margin.
 final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
-    var fonts = FontSet(.duo, size: AppState.defaultFontSize) { didSet { rebuildBase() } }
+    var fonts = FontSet(.duo, size: Fonts.defaultSize) { didSet { rebuildBase() } }
+    /// Off where the screen is too narrow to give up a margin to heading marks.
+    var hangsHeadings = true { didSet { rebuildBase() } }
     private(set) var baseAttributes: [NSAttributedString.Key: Any] = [:]
     private var baseParagraph = NSParagraphStyle()
     private var codeAttributes: [NSAttributedString.Key: Any] = [:]
@@ -14,11 +20,13 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         rebuildBase()
     }
 
+    private var hang: CGFloat { hangsHeadings ? fonts.hang : 0 }
+
     private func rebuildBase() {
         let p = NSMutableParagraphStyle()
         p.lineSpacing = round(fonts.size * 0.55)
-        p.firstLineHeadIndent = fonts.hang
-        p.headIndent = fonts.hang
+        p.firstLineHeadIndent = hang
+        p.headIndent = hang
         baseParagraph = p
         baseAttributes = [.font: fonts.regular, .foregroundColor: Theme.text, .paragraphStyle: p]
         codeAttributes = baseAttributes.merging([.backgroundColor: Theme.codeBackground]) { $1 }
@@ -32,7 +40,14 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         storage.endEditing()
     }
 
-    func textStorage(_ storage: NSTextStorage, didProcessEditing mask: NSTextStorageEditActions,
+    /// Restyles just `range`, e.g. to undo the focus dimming laid over it.
+    func restyle(_ storage: NSTextStorage, in range: NSRange) {
+        storage.beginEditing()
+        apply(storage, in: range, fences: fenceLines(storage.string))
+        storage.endEditing()
+    }
+
+    func textStorage(_ storage: NSTextStorage, didProcessEditing mask: TextEditActions,
                      range: NSRange, changeInLength delta: Int) {
         guard mask.contains(.editedCharacters) else { return }
         let ns = storage.string as NSString
@@ -89,12 +104,12 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             ts.addAttribute(.font, value: fonts.bold, range: m.range)
             dim(marks)
             let markWidth = fonts.width(ns.substring(with: marks), font: fonts.bold)
-            paragraph({ $0.firstLineHeadIndent = max(0, fonts.hang - markWidth) }, m.range)
+            paragraph({ $0.firstLineHeadIndent = max(0, hang - markWidth) }, m.range)
         }
         each(Self.listMarker) { m in
             dim(m.range)
             let markerWidth = fonts.width(ns.substring(with: m.range))
-            paragraph({ $0.headIndent = fonts.hang + markerWidth }, m.range)
+            paragraph({ $0.headIndent = hang + markerWidth }, m.range)
         }
         each(Self.quote) { m in
             dim(m.range(at: 1))
@@ -139,8 +154,11 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             }
             i += 2
         }
+        #if os(macOS)
         // Restore fallback fonts for characters the editor font lacks (e.g. ⌘, emoji).
+        // (UIKit falls back at draw time.)
         ts.fixAttributes(in: range)
+        #endif
     }
 
     /// Dims the opening and closing marker (capture group 1) of an inline span.
@@ -154,7 +172,7 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private func addTraits(_ ts: NSTextStorage, _ range: NSRange, bold: Bool = false, italic: Bool = false) {
         guard range.length > 0 else { return }
         ts.enumerateAttribute(.font, in: range) { value, sub, _ in
-            let f = value as? NSFont ?? fonts.regular
+            let f = value as? PlatformFont ?? fonts.regular
             let isBold = bold || f == fonts.bold || f == fonts.boldItalic
             let isItalic = italic || f == fonts.italic || f == fonts.boldItalic
             ts.addAttribute(.font, value: fonts.variant(bold: isBold, italic: isItalic), range: sub)

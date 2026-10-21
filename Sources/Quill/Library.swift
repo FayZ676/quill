@@ -2,71 +2,9 @@ import AppKit
 import CoreServices
 import SwiftUI
 
-struct FileNode: Identifiable, Hashable {
-    static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
-    static let textExtensions = markdownExtensions.union(["txt", "text"])
-
-    let url: URL
-    let isDirectory: Bool
-    var children: [FileNode]?
-
-    var id: URL { url }
-
-    var name: String { FileNode.displayName(url) }
-
-    static func displayName(_ url: URL) -> String {
-        markdownExtensions.contains(url.pathExtension.lowercased())
-            ? url.deletingPathExtension().lastPathComponent
-            : url.lastPathComponent
-    }
-
-    /// Folders and text files under `dir`, folders first. Directory URLs always carry a
-    /// trailing slash so they compare equal to URLs built elsewhere in the app.
-    static func scan(_ dir: URL, depth: Int = 0) -> [FileNode] {
-        let fm = FileManager.default
-        guard depth < 8, let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return [] }
-        var nodes: [FileNode] = []
-        for name in names where !name.hasPrefix(".") {
-            let path = (dir.path as NSString).appendingPathComponent(name)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: path, isDirectory: &isDir) else { continue }
-            if isDir.boolValue {
-                guard !NSWorkspace.shared.isFilePackage(atPath: path) else { continue }
-                let url = dir.appendingPathComponent(name, isDirectory: true)
-                nodes.append(FileNode(url: url, isDirectory: true, children: scan(url, depth: depth + 1)))
-            } else {
-                let url = dir.appendingPathComponent(name, isDirectory: false)
-                guard textExtensions.contains(url.pathExtension.lowercased()) else { continue }
-                nodes.append(FileNode(url: url, isDirectory: false, children: nil))
-            }
-        }
-        return nodes.sorted {
-            $0.isDirectory != $1.isDirectory
-                ? $0.isDirectory
-                : $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
-    }
-}
-
-enum FocusStyle: String, CaseIterable, Identifiable {
-    case sentence = "Sentence", paragraph = "Paragraph"
-    var id: String { rawValue }
-}
-
-final class Stats: ObservableObject {
-    @Published private(set) var words = 0
-
-    func update(_ text: String) {
-        let count = text.split(whereSeparator: \.isWhitespace)
-            .filter { $0.contains { $0.isLetter || $0.isNumber } }
-            .count
-        if count != words { words = count }
-    }
-}
-
 final class AppState: ObservableObject {
     static let shared = AppState()
-    static let defaultFontSize = 17.0
+    static let defaultFontSize = Fonts.defaultSize
 
     private let defaults = UserDefaults.standard
 
