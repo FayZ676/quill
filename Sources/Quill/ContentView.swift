@@ -159,9 +159,9 @@ private struct SidebarActions: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon() }
+        Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon(nudge: -1) }
             .help("New File (⌘N)")
-        Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon() }
+        Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon(nudge: -1) }
             .help("New Folder (⇧⌘N)")
     }
 }
@@ -171,7 +171,7 @@ private struct FocusToggle: View {
 
     var body: some View {
         Button { state.focusEnabled.toggle() } label: {
-            Image(systemName: state.focusEnabled ? "eye.circle.fill" : "eye.circle")
+            Image(systemName: state.focusEnabled ? "eye.fill" : "eye")
                 .toolbarIcon()
                 .foregroundStyle(state.focusEnabled ? Color.accentColor : Color.secondary)
         }
@@ -417,7 +417,11 @@ private struct WordCount: View {
 
 private extension Image {
     /// Toolbar symbols at a size that's easy to see and hit; the stock ones are tiny.
-    func toolbarIcon() -> some View {
-        font(.system(size: 17, weight: .regular)).frame(minWidth: 30, minHeight: 26)
+    /// `nudge` lifts a symbol whose pencil or badge pushes its body down, so the shapes
+    /// line up by eye rather than by bounding box.
+    func toolbarIcon(nudge: CGFloat = 0) -> some View {
+        font(.system(size: 17, weight: .regular))
+            .offset(y: nudge)
+            .frame(minWidth: 30, minHeight: 26)
     }
 }
