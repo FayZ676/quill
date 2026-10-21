@@ -74,28 +74,39 @@ private struct FolderView: View {
 
     var body: some View {
         let nodes = state.children(of: url)
+        VStack(spacing: 0) {
+            Header {
+                if isLibrary {
+                    BarButton("Settings", "gearshape") { showingSettings = true }
+                } else {
+                    BarButton("Back", "chevron.left") { state.goBack() }
+                }
+            } trailing: {
+                BarButton("New Folder", "folder.badge.plus") { state.newFolder(in: url) }
+                BarButton("New Document", "square.and.pencil") { state.newFile(in: url) }
+            }
+            list(nodes)
+        }
+        .background(Color(uiColor: Theme.background).ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showingSettings) { SettingsView() }
+    }
+
+    private func list(_ nodes: [FileNode]) -> some View {
         List {
-            ForEach(nodes) { node in
-                NavigationLink(value: Page(node.url)) {
-                    Label {
-                        HStack {
-                            Text(node.name)
-                                .lineLimit(1)
-                                .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
-                            Spacer()
-                            SyncBadge(sync: state.syncStates[node.url])
-                        }
-                    } icon: {
-                        Image(systemName: node.isDirectory ? "folder" : "doc.text")
-                            .foregroundStyle(node.isDirectory ? Color.accentColor : .secondary)
-                    }
+            // A folder is named in the list, not the bar, as in the Mac app's sidebar.
+            // The library needs no name.
+            if isLibrary {
+                rows(nodes)
+            } else {
+                Section {
+                    rows(nodes)
+                } header: {
+                    Text(url.lastPathComponent)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
                 }
-                .contextMenu { ItemMenu(url: node.url) }
-                .swipeActions {
-                    Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = node.url }
-                    Button("Rename", systemImage: "pencil") { state.beginRename(node.url) }
-                }
-                .listRowBackground(Color(uiColor: Theme.background))
             }
         }
         .listStyle(.plain)
@@ -114,21 +125,65 @@ private struct FolderView: View {
                 }
             }
         }
-        .navigationTitle(isLibrary ? state.libraryName : url.lastPathComponent)
-        .toolbar {
-            if isLibrary {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
+    }
+
+    private func rows(_ nodes: [FileNode]) -> some View {
+        ForEach(nodes) { node in
+            // A plain button rather than a NavigationLink: no chevron, like the Mac sidebar.
+            Button { state.pages.append(Page(node.url)) } label: {
+                Label {
+                    HStack {
+                        Text(node.name)
+                            .lineLimit(1)
+                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                        Spacer()
+                        SyncBadge(sync: state.syncStates[node.url])
+                    }
+                } icon: {
+                    Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                        .foregroundStyle(Color.accentColor)
                 }
+                .contentShape(Rectangle())
+                .background(PageColorRow())
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("New Folder", systemImage: "folder.badge.plus") { state.newFolder(in: url) }
+            .foregroundStyle(.primary)
+            .contextMenu { ItemMenu(url: node.url) }
+            .swipeActions {
+                // Icons alone: with their names too, iOS pads them into wide, fat pills.
+                Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = node.url }
+                    .labelStyle(.iconOnly)
+                    .tint(.red)
+                Button("Rename", systemImage: "pencil") { state.beginRename(node.url) }
+                    .labelStyle(.iconOnly)
+                    .tint(.gray)
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: url) }
-            }
+            .listRowSeparator(.hidden)
         }
-        .sheet(isPresented: $showingSettings) { SettingsView() }
+    }
+}
+
+/// Gives a row the page color while keeping the rounded fill iOS draws behind a swiped row,
+/// as in Messages. A SwiftUI row background would paint over that fill, so this sets the
+/// list cell's own background instead.
+private struct PageColorRow: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView { Probe() }
+    func updateUIView(_ view: UIView, context: Context) {}
+
+    private final class Probe: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var view = superview
+            while let v = view, !(v is UICollectionViewCell) { view = v.superview }
+            guard let cell = view as? UICollectionViewCell else { return }
+            cell.configurationUpdateHandler = { cell, state in
+                var background = UIBackgroundConfiguration.listPlainCell().updated(for: state)
+                if !state.isSwiped && !state.isHighlighted && !state.isSelected {
+                    background.backgroundColor = Theme.background
+                }
+                cell.backgroundConfiguration = background
+            }
+            cell.setNeedsUpdateConfiguration()
+        }
     }
 }
 
@@ -188,37 +243,12 @@ private struct EditorScreen: View {
     @StateObject private var chrome = EditorChrome()
 
     var body: some View {
-        EditorView(state: state, page: page, chrome: chrome)
-            // The text runs up under the bars, so they can go without the page jumping:
-            // UIKit folds their height into the scroll insets instead.
-            .ignoresSafeArea(.container, edges: .top)
-            .background(Color(uiColor: Theme.background).ignoresSafeArea())
-            .toolbar(chrome.hidden ? .hidden : .visible, for: .navigationBar)
-            .statusBarHidden(chrome.hidden)
-            .overlay {
-                if chrome.downloading {
-                    VStack(spacing: 10) {
-                        ProgressView()
-                        Text("Downloading from iCloud").font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        .navigationTitle(Binding(get: { FileNode.displayName(page.url) },
-                                 set: { state.rename(page.url, to: $0) }))
-        .navigationBarTitleDisplayMode(.inline)
-        // The title becomes a menu with Rename.
-        .toolbarRole(.editor)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    state.focusEnabled.toggle()
-                } label: {
-                    Image(systemName: state.focusEnabled ? "eye.fill" : "eye")
-                }
-                .accessibilityLabel("Focus Mode")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu("More", systemImage: "ellipsis") {
+        VStack(spacing: 0) {
+            Header(title: FileNode.displayName(page.url), titleAction: { state.beginRename(page.url) }) {
+                BarButton("Back", "chevron.left") { state.goBack() }
+            } trailing: {
+                BarButton("Focus Mode", state.focusEnabled ? "eye.fill" : "eye") { state.focusEnabled.toggle() }
+                Menu {
                     ViewOptions()
                     ControlGroup {
                         Button("Smaller", systemImage: "textformat.size.smaller") {
@@ -230,9 +260,103 @@ private struct EditorScreen: View {
                     }
                     Divider()
                     ItemMenu(url: page.url)
+                } label: {
+                    BarIcon(symbol: "ellipsis")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .accessibilityLabel("More")
+            }
+            // It fades but keeps its room, so the page doesn't jump.
+            .opacity(chrome.hidden ? 0 : 1)
+            .allowsHitTesting(!chrome.hidden)
+
+            EditorView(state: state, page: page, chrome: chrome)
+                .overlay {
+                    if chrome.downloading {
+                        VStack(spacing: 10) {
+                            ProgressView()
+                            Text("Downloading from iCloud").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+        }
+        .background(Color(uiColor: Theme.background).ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+// MARK: Header
+
+/// A slim, flat bar in place of the navigation bar: controls at the edges, the title between.
+private struct Header<Leading: View, Trailing: View>: View {
+    var title = ""
+    var titleAction: (() -> Void)? = nil
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        VStack(spacing: 0) {
+            bar
+            Divider()
+        }
+    }
+
+    private var bar: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 0) { leading }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if let titleAction {
+                    Button(action: titleAction) { titleText }.buttonStyle(.plain)
+                } else {
+                    titleText
                 }
             }
+            .layoutPriority(1)
+            HStack(spacing: 0) { trailing }
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .padding(.horizontal, 4)
+        .frame(height: 44)
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+}
+
+private struct BarIcon: View {
+    let symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 20))
+            .foregroundStyle(.secondary)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+private struct BarButton: View {
+    let label: String
+    let symbol: String
+    let action: () -> Void
+
+    init(_ label: String, _ symbol: String, action: @escaping () -> Void) {
+        self.label = label
+        self.symbol = symbol
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) { BarIcon(symbol: symbol) }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
     }
 }
 
@@ -261,7 +385,14 @@ private struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            Header(title: "Settings") {
+                EmptyView()
+            } trailing: {
+                Button("Done") { dismiss() }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 10)
+            }
             Form {
                 Section {
                     LabeledContent("Folder", value: state.isExternalLibrary ? state.root.lastPathComponent : "On My iPhone")
@@ -279,12 +410,8 @@ private struct SettingsView: View {
                     Stepper("Text Size: \(Int(state.fontSize))", value: $state.fontSize, in: 11...32)
                 }
             }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
         }
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
     }
 }
 
@@ -328,5 +455,17 @@ private struct ChooseFolderButton: View {
                 case .failure(let error): state.errorMessage = error.localizedDescription
                 }
             }
+    }
+}
+
+/// With the navigation bar hidden, UIKit turns off the swipe back from the edge; this keeps it.
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        viewControllers.count > 1
     }
 }

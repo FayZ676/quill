@@ -174,28 +174,50 @@ final class FocusTextView: UITextView {
         ]
     }
 
-    /// Markdown shortcuts above the on-screen keyboard.
-    private func makeKeyBar() -> UIToolbar {
-        let bar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
-        func item(_ symbol: String, _ label: String, _ action: Selector) -> UIBarButtonItem {
-            let b = UIBarButtonItem(image: UIImage(systemName: symbol), style: .plain, target: self, action: action)
+    /// Markdown shortcuts above the on-screen keyboard: a flat strip of icons on the page color.
+    private func makeKeyBar() -> UIView {
+        let bar = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 40))
+        bar.autoresizingMask = .flexibleWidth
+        bar.backgroundColor = Theme.background
+
+        let rule = UIView()
+        rule.backgroundColor = .separator
+        rule.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(rule)
+
+        func button(_ symbol: String, _ label: String, _ action: Selector) -> UIButton {
+            let b = UIButton(type: .system)
+            b.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 15)), for: .normal)
+            b.tintColor = .secondaryLabel
             b.accessibilityLabel = label
+            b.addTarget(self, action: action, for: .touchUpInside)
+            b.widthAnchor.constraint(equalToConstant: 40).isActive = true
             return b
         }
-        // Adjacent items share one glass capsule; a flexible space would split each into its
-        // own, too wide for a phone.
-        bar.items = [
-            item("number", "Heading", #selector(heading)),
-            item("bold", "Bold", #selector(bold)),
-            item("italic", "Italic", #selector(italic)),
-            item("list.bullet", "List", #selector(bullet)),
-            item("link", "Link", #selector(link)),
-            item("chevron.left.forwardslash.chevron.right", "Code", #selector(inlineCode)),
-            UIBarButtonItem(systemItem: .flexibleSpace),
-            item("keyboard.chevron.compact.down", "Hide Keyboard", #selector(resignFirstResponder)),
-        ]
-        bar.tintColor = Theme.accent
-        bar.sizeToFit()
+        let stack = UIStackView(arrangedSubviews: [
+            button("number", "Heading", #selector(heading)),
+            button("bold", "Bold", #selector(bold)),
+            button("italic", "Italic", #selector(italic)),
+            button("list.bullet", "List", #selector(bullet)),
+            button("link", "Link", #selector(link)),
+            button("chevron.left.forwardslash.chevron.right", "Code", #selector(inlineCode)),
+            UIView(),
+            button("keyboard.chevron.compact.down", "Hide Keyboard", #selector(resignFirstResponder)),
+        ])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(stack)
+
+        let guide = bar.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            rule.topAnchor.constraint(equalTo: bar.topAnchor),
+            rule.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            rule.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            rule.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+            stack.topAnchor.constraint(equalTo: bar.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
+        ])
         return bar
     }
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Like the Mac app, the chrome (navigation and status bars) fades away once you start
+/// Like the Mac app, the chrome (the header) fades away once you start
 /// typing, and comes back when you scroll or put the keyboard away.
 final class EditorChrome: ObservableObject {
     @Published private(set) var hidden = false

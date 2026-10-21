@@ -152,6 +152,10 @@ final class AppState: ObservableObject {
         libraryChosen()
     }
 
+    func goBack() {
+        if !pages.isEmpty { pages.removeLast() }
+    }
+
     // MARK: File operations
 
     func newFile(in dir: URL) {
