@@ -20,37 +20,35 @@ final class FocusTextView: NSTextView {
     private static let verticalInset: CGFloat = 72
 
     private static let caretWidth: CGFloat = 2.5
-    private static let caretGlow: CGFloat = 6
+    private let caretView = CaretView()
 
-    /// A thick, softly glowing caret, iA-style. AppKit sizes the caret to the whole line
-    /// fragment, which includes the line spacing below the text, so it's trimmed to the
-    /// font's own line height to match the glyphs.
+    /// AppKit's caret blinks hard on and off; this one is a layer that fades. AppKit still
+    /// says where the caret goes, through this call, but never gets to draw it. The rect
+    /// covers the whole line fragment, including the line spacing below the text, so it's
+    /// trimmed to the font's own line height to match the glyphs.
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
         var caret = rect
         caret.size.width = Self.caretWidth
         if let lm = layoutManager {
             caret.size.height = min(rect.height, lm.defaultLineHeight(for: fonts.regular))
         }
-        guard flag else {
-            // Blinking off: repaint the glow's whole footprint, not just the 1pt system caret.
-            return setNeedsDisplay(caret.insetBy(dx: -2 * Self.caretGlow, dy: -2 * Self.caretGlow))
-        }
-        NSGraphicsContext.saveGraphicsState()
-        let glow = NSShadow()
-        glow.shadowColor = color.withAlphaComponent(0.85)
-        glow.shadowBlurRadius = Self.caretGlow
-        glow.shadowOffset = .zero
-        glow.set()
-        color.setFill()
-        NSBezierPath(roundedRect: caret, xRadius: 1, yRadius: 1).fill()
-        NSGraphicsContext.restoreGraphicsState()
+        if caretView.superview == nil { addSubview(caretView) }
+        caretView.show(at: caret, color: color)
     }
 
-    /// AppKit invalidates only the thin system caret's rect when it blinks or moves; widen
-    /// that so the glow is redrawn and erased with it.
-    override func setNeedsDisplay(_ invalidRect: NSRect, avoidAdditionalLayout flag: Bool) {
-        super.setNeedsDisplay(invalidRect.insetBy(dx: -2 * Self.caretGlow, dy: -2 * Self.caretGlow),
-                              avoidAdditionalLayout: flag)
+    override func updateInsertionPointStateAndRestartTimer(_ restartFlag: Bool) {
+        super.updateInsertionPointStateAndRestartTimer(restartFlag)
+        if !shouldDrawInsertionPoint || selectedRange().length > 0 {
+            caretView.hide()
+        } else if restartFlag {
+            caretView.restartPulse()
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { caretView.hide() }
+        return resigned
     }
 
     override var textContainerOrigin: NSPoint {
@@ -237,3 +235,76 @@ final class FocusTextView: NSTextView {
         setSelectedRange(select)
     }
 }
+
+/// The caret: a glowing bar that holds steady while the writer types or moves, then
+/// breathes in and out.
+private final class CaretView: NSView {
+    private static let glow: CGFloat = 4
+    private static let pad: CGFloat = 12
+    private let bar = CALayer()
+    private var color = NSColor.controlAccentColor
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        isHidden = true
+        bar.cornerRadius = 1
+        bar.shadowOffset = .zero
+        bar.shadowRadius = Self.glow
+        bar.shadowOpacity = 0.85
+        layer?.addSublayer(bar)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func show(at caret: NSRect, color: NSColor) {
+        // The view is padded so the glow isn't clipped at its edges.
+        let frame = caret.insetBy(dx: -Self.pad, dy: -Self.pad)
+        guard isHidden || frame != self.frame || color != self.color else { return }
+        self.color = color
+        self.frame = frame
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bar.frame = NSRect(x: Self.pad, y: Self.pad, width: caret.width, height: caret.height)
+        applyColor()
+        CATransaction.commit()
+        isHidden = false
+        restartPulse()
+    }
+
+    func hide() {
+        isHidden = true
+        layer?.removeAnimation(forKey: "pulse")
+    }
+
+    /// Solid for a beat, then a slow fade out and back in, forever.
+    func restartPulse() {
+        guard let layer, !isHidden else { return }
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1
+        pulse.toValue = 0
+        pulse.duration = 0.55
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pulse.beginTime = CACurrentMediaTime() + 0.5
+        pulse.fillMode = .backwards
+        layer.add(pulse, forKey: "pulse")
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColor()
+    }
+
+    /// CGColors don't follow light and dark mode on their own, so resolve them per appearance.
+    private func applyColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            bar.backgroundColor = color.cgColor
+            bar.shadowColor = color.cgColor
+        }
+    }
+}
+
