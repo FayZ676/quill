@@ -1,6 +1,9 @@
 // Draws Quill's app icon: a paper-white tile with dimmed text lines, one focused line,
-// and a caret in the accent color. Usage: swift make-icon.swift <output.png> <RRGGBB>
+// and a caret in the accent color. Usage: swift make-icon.swift <output.png> <RRGGBB> [ios]
+// With "ios", the tile fills the whole square, unrounded and unshadowed: iOS masks it itself.
 import AppKit
+
+let fullBleed = CommandLine.arguments.count > 3 && CommandLine.arguments[3] == "ios"
 
 let px = 1024
 let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
@@ -15,13 +18,22 @@ func color(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColo
 
 // Tile with a soft shadow, sized to Apple's icon grid (824pt on a 1024 canvas).
 let tile = NSRect(x: 100, y: 100, width: 824, height: 824)
-let shape = NSBezierPath(roundedRect: tile, xRadius: 185, yRadius: 185)
+if fullBleed {
+    // Draw the same design, scaled up so the tile covers the canvas.
+    let t = NSAffineTransform()
+    t.scale(by: CGFloat(px) / tile.width)
+    t.translateX(by: -tile.minX, yBy: -tile.minY)
+    t.concat()
+}
+let shape = fullBleed ? NSBezierPath(rect: tile) : NSBezierPath(roundedRect: tile, xRadius: 185, yRadius: 185)
 NSGraphicsContext.saveGraphicsState()
-let shadow = NSShadow()
-shadow.shadowColor = color(0, 0, 0, 0.28)
-shadow.shadowOffset = NSSize(width: 0, height: -12)
-shadow.shadowBlurRadius = 28
-shadow.set()
+if !fullBleed {
+    let shadow = NSShadow()
+    shadow.shadowColor = color(0, 0, 0, 0.28)
+    shadow.shadowOffset = NSSize(width: 0, height: -12)
+    shadow.shadowBlurRadius = 28
+    shadow.set()
+}
 color(250, 250, 247).setFill()
 shape.fill()
 NSGraphicsContext.restoreGraphicsState()
