@@ -22,6 +22,12 @@ final class ChromeFader: ObservableObject {
         setHidden(true)
     }
 
+    /// Brings the chrome back without waiting for the mouse, as when the sidebar is called
+    /// up from the keyboard mid-sentence.
+    func reveal() {
+        setHidden(false)
+    }
+
     private func attach(_ window: NSWindow) {
         guard self.window !== window else { return }
         self.window = window

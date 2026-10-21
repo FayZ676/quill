@@ -73,6 +73,11 @@ struct ContentView: View {
                 withAnimation { state.sidebarShown = false }
             }
         }
+        // The sidebar's buttons fade with the chrome, so a sidebar brought back from the
+        // keyboard mid-sentence would come back without them.
+        .onChange(of: state.sidebarShown) { shown in
+            if shown { state.chrome.reveal() }
+        }
         // Names the window in the Window menu and Mission Control; the visible title is the
         // centered, renamable one in Quill's bar.
         .navigationTitle(state.openFile.map(FileNode.displayName) ?? "Quill")
