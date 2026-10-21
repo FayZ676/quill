@@ -65,8 +65,15 @@ STAGE="$OUT/dmg"
 mkdir -p "$STAGE"
 cp -R "$APPDIR" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "$APP" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
-rm -rf "$STAGE" "$ICONSET"
+# macOS won't let hdiutil copy Quill.app into a volume named "Quill" ("Operation not
+# permitted"), so the image is made under another name and renamed before compressing.
+RW="$OUT/$APP-rw.dmg"
+hdiutil create -volname "$APP Stage" -srcfolder "$STAGE" -ov -format UDRW "$RW" >/dev/null
+DEV=$(hdiutil attach -nobrowse -noverify "$RW" | awk -v vol="/Volumes/$APP Stage" 'index($0, vol) {print $1}')
+diskutil rename "$DEV" "$APP" >/dev/null
+hdiutil detach "$DEV" >/dev/null
+hdiutil convert "$RW" -format UDZO -ov -o "$DMG" >/dev/null
+rm -rf "$STAGE" "$ICONSET" "$RW"
 
 if [ -n "$SIGN_IDENTITY" ]; then
   codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
