@@ -58,9 +58,11 @@ struct ContentView: View {
             ToolbarItem(placement: .principal) {
                 if let file = state.openFile, !fullScreen { TitleField(file: file) }
             }
+            .withoutGlass()
             ToolbarItemGroup {
                 if !fullScreen { FocusToggle() }
             }
+            .withoutGlass()
         }
         // A toolbar shares its bar with the window buttons, and in full screen they'd hide
         // together. So there the toolbar goes, macOS gives the window buttons their own bar
@@ -112,8 +114,6 @@ private struct FullScreenBar: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
             .padding(.horizontal, 14)
             .frame(height: 48)
             .background(Color(nsColor: Theme.background))
@@ -134,6 +134,7 @@ private struct SidebarToggle: View {
         } label: {
             Image(systemName: "sidebar.left").toolbarIcon()
         }
+        .buttonStyle(.bare)
         .help("Show or Hide Sidebar (⌃⌘S)")
     }
 }
@@ -148,6 +149,7 @@ private struct OwnSidebarToggle: ViewModifier {
                 .toolbar(removing: .sidebarToggle)
                 .toolbar {
                     ToolbarItem(placement: .navigation) { SidebarToggle(columns: $columns) }
+                        .withoutGlass()
                 }
         } else {
             content
@@ -160,8 +162,10 @@ private struct SidebarActions: View {
 
     var body: some View {
         Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon(nudge: -1) }
+            .buttonStyle(.bare)
             .help("New File (⌘N)")
         Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon(nudge: -1) }
+            .buttonStyle(.bare)
             .help("New Folder (⇧⌘N)")
     }
 }
@@ -175,6 +179,7 @@ private struct FocusToggle: View {
                 .toolbarIcon()
                 .foregroundStyle(state.focusEnabled ? Color.accentColor : Color.secondary)
         }
+        .buttonStyle(.bare)
         .help("Focus Mode (⇧⌘D)")
     }
 }
@@ -188,9 +193,7 @@ struct SidebarView: View {
     var body: some View {
         ScrollViewReader { proxy in
             List(selection: $state.selection) {
-                Section(state.root.lastPathComponent) {
-                    TreeRows(nodes: state.tree)
-                }
+                TreeRows(nodes: state.tree)
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
@@ -224,6 +227,7 @@ struct SidebarView: View {
                     SidebarActions()
                 }
             }
+            .withoutGlass()
         }
         .overlay {
             if state.tree.isEmpty {
@@ -420,8 +424,34 @@ private extension Image {
     /// `nudge` lifts a symbol whose pencil or badge pushes its body down, so the shapes
     /// line up by eye rather than by bounding box.
     func toolbarIcon(nudge: CGFloat = 0) -> some View {
-        font(.system(size: 17, weight: .regular))
+        font(.system(size: 20, weight: .regular))
             .offset(y: nudge)
-            .frame(minWidth: 30, minHeight: 26)
+            .frame(minWidth: 34, minHeight: 30)
+    }
+}
+
+/// Bar buttons as bare symbols on the page color: no bezel, no hover plate.
+private struct BareButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.secondary)
+            .opacity(configuration.isPressed ? 0.5 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+private extension ButtonStyle where Self == BareButtonStyle {
+    static var bare: BareButtonStyle { BareButtonStyle() }
+}
+
+private extension ToolbarContent {
+    /// Drops the glass capsule macOS 26 puts behind toolbar items.
+    @ToolbarContentBuilder
+    func withoutGlass() -> some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
     }
 }
