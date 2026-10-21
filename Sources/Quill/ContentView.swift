@@ -67,10 +67,15 @@ struct ContentView: View {
         })
         .background(Color(nsColor: Theme.background).ignoresSafeArea())
         // Like iA Writer, the library slides away once you start typing and stays put
-        // until you bring it back.
+        // until you bring it back. A turn later, as `$hidden` fires before `hidden` changes:
+        // sliding the sidebar right away redraws the bars while they still read as shown,
+        // and they'd stay that way.
         .onReceive(state.chrome.$hidden) { hidden in
-            if hidden && state.sidebarShown {
-                withAnimation { state.sidebarShown = false }
+            guard hidden else { return }
+            DispatchQueue.main.async {
+                if state.chrome.hidden && state.sidebarShown {
+                    withAnimation { state.sidebarShown = false }
+                }
             }
         }
         // The sidebar's buttons fade with the chrome, so a sidebar brought back from the

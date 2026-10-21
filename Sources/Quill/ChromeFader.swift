@@ -41,7 +41,7 @@ final class ChromeFader: ObservableObject {
             forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main
         ) { [weak self] _ in
             guard let self, let window = self.window else { return }
-            self.titlebarContainer(of: window)?.alphaValue = 1
+            self.windowButtons(of: window).forEach { $0.alphaValue = 1 }
         }
         if monitor == nil {
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown]) { [weak self] event in
@@ -61,22 +61,20 @@ final class ChromeFader: ObservableObject {
     }
 
     private func setHidden(_ hide: Bool) {
-        guard hide != hidden, let window, let titlebar = titlebarContainer(of: window) else { return }
+        guard hide != hidden, let window else { return }
         hidden = hide
         guard !window.styleMask.contains(.fullScreen) else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = hide ? 0.5 : 0.2
-            titlebar.animator().alphaValue = hide ? 0 : 1
+            windowButtons(of: window).forEach { $0.animator().alphaValue = hide ? 0 : 1 }
         }
     }
 
-    /// The private NSTitlebarContainerView that holds the title, toolbar and window buttons.
-    private func titlebarContainer(of window: NSWindow) -> NSView? {
-        let start = window.standardWindowButton(.closeButton)?.superview
-        var view = start
-        while let v = view, !String(describing: type(of: v)).contains("TitlebarContainer") {
-            view = v.superview
-        }
-        return view ?? start
+    /// The traffic lights: all that's left of the title bar, the rest being Quill's own bars.
+    /// Faded one by one rather than through the title bar view that holds them, as SwiftUI
+    /// sets that view back to opaque whenever it updates the window, as it does when the
+    /// sidebar slides away.
+    private func windowButtons(of window: NSWindow) -> [NSButton] {
+        [.closeButton, .miniaturizeButton, .zoomButton].compactMap { window.standardWindowButton($0) }
     }
 }
