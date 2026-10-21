@@ -214,27 +214,6 @@ private struct ItemMenu: View {
     }
 }
 
-/// Marks files iCloud hasn't brought to the device yet; downloaded files show nothing.
-private struct SyncBadge: View {
-    let sync: SyncState?
-
-    var body: some View {
-        Group {
-            switch sync {
-            case .notDownloaded:
-                Image(systemName: "icloud.and.arrow.down").foregroundStyle(.tertiary)
-                    .accessibilityLabel("Not downloaded")
-            case .downloading:
-                ProgressView().controlSize(.mini)
-                    .accessibilityLabel("Downloading")
-            case nil:
-                EmptyView()
-            }
-        }
-        .font(.footnote)
-    }
-}
-
 // MARK: Editor
 
 private struct EditorScreen: View {
@@ -389,10 +368,13 @@ private struct SettingsView: View {
             Header(title: "Settings") {
                 EmptyView()
             } trailing: {
+                // In line with the form's rows, clear of the sheet's rounded corner.
                 Button("Done") { dismiss() }
                     .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 16)
             }
+            // Room above the bar, so it doesn't crowd the top of the sheet.
+            .padding(.top, 8)
             Form {
                 Section {
                     LabeledContent("Folder", value: state.isExternalLibrary ? state.root.lastPathComponent : "On My iPhone")

@@ -103,13 +103,7 @@ final class AppState: ObservableObject {
         if let gone = pages.firstIndex(where: { !FileManager.default.fileExists(atPath: $0.url.path) }) {
             pages.removeSubrange(gone...)
         }
-        var states: [URL: SyncState] = [:]
-        func check(_ nodes: [FileNode]) {
-            for node in nodes {
-                if node.isDirectory { check(node.children ?? []) } else { states[node.url] = SyncState(of: node.url) }
-            }
-        }
-        check(tree)
+        let states = SyncState.of(tree)
         if states != syncStates { syncStates = states }
 
         recheck?.cancel()

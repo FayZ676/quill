@@ -10,6 +10,8 @@ final class AppState: ObservableObject {
 
     @Published private(set) var root: URL
     @Published private(set) var tree: [FileNode] = []
+    /// Files iCloud hasn't brought to this Mac yet.
+    @Published private(set) var syncStates: [URL: SyncState] = [:]
     @Published var selection: URL? { didSet { if selection != oldValue { selectionChanged() } } }
     @Published private(set) var openFile: URL?
 
@@ -35,6 +37,7 @@ final class AppState: ObservableObject {
     /// A just-created file is being named; the editor takes over once that's done.
     private var namingNewFile = false
     private var watcher: FolderWatcher?
+    private var recheck: DispatchWorkItem?
 
     private init() {
         focusEnabled = defaults.bool(forKey: "focusEnabled")
@@ -74,6 +77,17 @@ final class AppState: ObservableObject {
         if fresh != tree { tree = fresh }
         if let open = openFile, !FileManager.default.fileExists(atPath: open.path) {
             openFile = nil
+        }
+        let states = SyncState.of(tree)
+        if states != syncStates { syncStates = states }
+
+        // A finished download doesn't always reach the folder watcher, so look again
+        // until every download has landed.
+        recheck?.cancel()
+        if states.values.contains(.downloading) {
+            let work = DispatchWorkItem { [weak self] in self?.reloadTree() }
+            recheck = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
     }
 

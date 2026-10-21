@@ -216,12 +216,13 @@ private struct SidebarActions: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon(nudge: -1) }
-            .buttonStyle(.bare)
-            .help("New File (⌘N)")
+        // New File at the outer edge, as on iPhone and iPad.
         Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon(nudge: -1) }
             .buttonStyle(.bare)
             .help("New Folder (⇧⌘N)")
+        Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon(nudge: -1) }
+            .buttonStyle(.bare)
+            .help("New File (⌘N)")
     }
 }
 
@@ -344,7 +345,17 @@ private struct NodeRow: View {
                     Image(systemName: symbol)
                 }
             } else {
-                Label(node.name, systemImage: symbol).lineLimit(1)
+                Label {
+                    HStack {
+                        Text(node.name)
+                            .lineLimit(1)
+                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                        Spacer()
+                        SyncBadge(sync: state.syncStates[node.url])
+                    }
+                } icon: {
+                    Image(systemName: symbol)
+                }
             }
         }
         // Fill the row so drops anywhere along it count, not just over the name.
