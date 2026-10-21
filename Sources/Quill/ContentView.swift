@@ -2,30 +2,32 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var state: AppState
-    @State private var columns: NavigationSplitViewVisibility = .all
     @State private var sidebarShownForRename = false
-    @State private var fullScreen = false
+    @AppStorage("sidebarWidth") private var sidebarWidth = 240.0
+    /// The height of the window buttons' strip above Quill's bar; none in full screen.
+    @State private var buttonStripHeight: CGFloat = 0
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columns) {
+        HStack(spacing: 0) {
             // Stacked rather than inset: the list scrolls under an inset and its top rows
             // would be stuck there.
             VStack(spacing: 0) {
-                if fullScreen {
-                    HStack(spacing: 6) {
-                        SidebarToggle(columns: $columns)
-                        SidebarActions()
-                        Spacer()
-                    }
-                    .modifier(FullScreenBar(chrome: state.chrome))
+                // In the sidebar, so they come and go with it.
+                HStack(spacing: 6) {
+                    Spacer()
+                    SidebarActions()
                 }
-                SidebarView(columns: $columns, showsActions: columns != .detailOnly && !fullScreen)
+                .modifier(TitleBar(chrome: state.chrome))
+                BarDivider(chrome: state.chrome)
+                SidebarView()
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 420)
-            // The page color, not the translucent sidebar material, so the whole window
-            // reads as one surface.
-            .background(Color(nsColor: Theme.background).ignoresSafeArea())
-        } detail: {
+            // Laid out at its full width and uncovered as it slides, so the list isn't laid
+            // out again on every frame of the slide.
+            .frame(width: sidebarWidth)
+            .frame(width: state.sidebarShown ? sidebarWidth : 0, alignment: .trailing)
+            .clipped()
+            .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
+
             ZStack(alignment: .bottom) {
                 EditorView(state: state)
                 if state.openFile == nil {
@@ -33,72 +35,69 @@ struct ContentView: View {
                 }
                 WordCount(stats: state.stats, chrome: state.chrome)
             }
-            .background(Color(nsColor: Theme.background).ignoresSafeArea())
+            // Gives way to the sidebar rather than pushing it off the window.
+            .frame(minWidth: 0, maxWidth: .infinity)
             .ignoresSafeArea(.container, edges: .bottom)
             .safeAreaInset(edge: .top, spacing: 0) {
-                if fullScreen {
-                    DetailBar(columns: $columns).modifier(FullScreenBar(chrome: state.chrome))
+                VStack(spacing: 0) {
+                    DetailBar().modifier(TitleBar(chrome: state.chrome))
+                    BarDivider(chrome: state.chrome)
                 }
             }
-            // Let the page color run up through the toolbar, so the faded title bar leaves no band.
-            .toolbarBackground(.hidden, for: .windowToolbar)
         }
+        // The window buttons' strip: a shade darker than the page, with a line under it like
+        // the one under Quill's bar. Over the content, as the editor reaches up under it; it
+        // takes no clicks, so the strip still moves the window. Gives way to the page while
+        // you write.
+        .overlay(alignment: .top) {
+            if buttonStripHeight > 0 {
+                VStack(spacing: 0) {
+                    Color(nsColor: Theme.titleBar).frame(height: buttonStripHeight)
+                    Divider()
+                }
+                .modifier(FadesWithChrome(chrome: state.chrome))
+                .allowsHitTesting(false)
+                .ignoresSafeArea()
+            }
+        }
+        .background(GeometryReader { geometry in
+            Color.clear
+                .onAppear { buttonStripHeight = geometry.safeAreaInsets.top }
+                .onChange(of: geometry.safeAreaInsets.top) { buttonStripHeight = $0 }
+        })
+        .background(Color(nsColor: Theme.background).ignoresSafeArea())
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back.
         .onReceive(state.chrome.$hidden) { hidden in
-            if hidden && columns != .detailOnly {
-                withAnimation { columns = .detailOnly }
+            if hidden && state.sidebarShown {
+                withAnimation { state.sidebarShown = false }
             }
         }
-        // Still names the window in the Window menu and Mission Control; the visible title
-        // is the centered, renamable one below.
+        // Names the window in the Window menu and Mission Control; the visible title is the
+        // centered, renamable one in Quill's bar.
         .navigationTitle(state.openFile.map(FileNode.displayName) ?? "Quill")
-        .modifier(HideSystemTitle())
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                if let file = state.openFile, !fullScreen { TitleField(file: file) }
-            }
-            .withoutGlass()
-            ToolbarItemGroup {
-                if !fullScreen { FocusToggle() }
-            }
-            .withoutGlass()
-        }
-        // A toolbar shares its bar with the window buttons, and in full screen they'd hide
-        // together. So there the toolbar goes, macOS gives the window buttons their own bar
-        // that drops down with the menu bar, and Quill's controls stay put in a bar of its own.
-        // (SwiftUI's .toolbar(.hidden) would take the window buttons with it.)
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) {
-            ($0.object as? NSWindow)?.toolbar?.isVisible = false
-            fullScreen = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) {
-            ($0.object as? NSWindow)?.toolbar?.isVisible = true
-            fullScreen = false
-        }
         // Renaming happens in the sidebar, so bring it out for the occasion and put it
         // back afterwards.
         .onChange(of: state.renameTarget) { target in
-            if target != nil, columns == .detailOnly {
+            if target != nil, !state.sidebarShown {
                 sidebarShownForRename = true
-                withAnimation { columns = .all }
+                withAnimation { state.sidebarShown = true }
             } else if target == nil, sidebarShownForRename {
                 sidebarShownForRename = false
-                withAnimation { columns = .detailOnly }
+                withAnimation { state.sidebarShown = false }
             }
         }
     }
 }
 
-/// The writing column's half of the full-screen bar. The title centers over the text, like
-/// the word count below it; the sidebar toggle moves here when the sidebar is away.
+/// The writing column's half of Quill's bar. The title centers over the text, like the word
+/// count below it; the sidebar toggle sits at its leading edge.
 private struct DetailBar: View {
     @EnvironmentObject var state: AppState
-    @Binding var columns: NavigationSplitViewVisibility
 
     var body: some View {
         HStack(spacing: 6) {
-            if columns == .detailOnly { SidebarToggle(columns: $columns) }
+            SidebarToggle()
             Spacer()
             FocusToggle()
         }
@@ -108,8 +107,9 @@ private struct DetailBar: View {
     }
 }
 
-/// Quill's toolbar, drawn in the window for full screen, one half over each column.
-private struct FullScreenBar: ViewModifier {
+/// Quill's bar, one half over each column, under the window buttons' strip in a window and
+/// at the top of the screen in full screen.
+private struct TitleBar: ViewModifier {
     @ObservedObject var chrome: ChromeFader
 
     func body(content: Content) -> some View {
@@ -117,43 +117,98 @@ private struct FullScreenBar: ViewModifier {
             .padding(.horizontal, 14)
             .frame(height: 48)
             .background(Color(nsColor: Theme.background))
-            // Fades with the rest of the chrome while you write.
+            .modifier(FadesWithChrome(chrome: chrome))
+    }
+}
+
+/// Fades with the rest of the chrome while you write.
+private struct FadesWithChrome: ViewModifier {
+    @ObservedObject var chrome: ChromeFader
+
+    func body(content: Content) -> some View {
+        content
             .opacity(chrome.hidden ? 0 : 1)
             .animation(.easeInOut(duration: chrome.hidden ? 0.5 : 0.2), value: chrome.hidden)
             .allowsHitTesting(!chrome.hidden)
     }
 }
 
-/// Stands in for the system sidebar button, which can't be made bigger to match the others.
+/// Row icons in the accent color, as a split view's sidebar draws them, and white on the
+/// selected row.
+private struct AccentIcon: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Label {
+            configuration.title
+        } icon: {
+            if #available(macOS 14.0, *) {
+                Icon(icon: configuration.icon)
+            } else {
+                configuration.icon.foregroundStyle(.tint)
+            }
+        }
+    }
+
+    @available(macOS 14.0, *)
+    private struct Icon: View {
+        let icon: LabelStyleConfiguration.Icon
+        @Environment(\.backgroundProminence) private var prominence
+
+        var body: some View {
+            icon.foregroundStyle(prominence == .increased ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
+        }
+    }
+}
+
+/// The sidebar's right edge: a line, and a handle a little wider than it that resizes the
+/// sidebar.
+private struct SidebarEdge: View {
+    @Binding var width: Double
+    /// The width when the drag began.
+    @State private var dragStart: Double?
+
+    var body: some View {
+        Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    // In window coordinates: the handle moves with the drag.
+                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                        .onChanged { drag in
+                            let start = dragStart ?? width
+                            dragStart = start
+                            width = min(420, max(180, start + drag.translation.width))
+                        }
+                        .onEnded { _ in dragStart = nil })
+            }
+    }
+}
+
+/// The line under the top bar, like the one beside the sidebar. Goes with the bar while you write.
+private struct BarDivider: View {
+    @ObservedObject var chrome: ChromeFader
+
+    var body: some View {
+        Divider()
+            .opacity(chrome.hidden ? 0 : 1)
+            .animation(.easeInOut(duration: chrome.hidden ? 0.5 : 0.2), value: chrome.hidden)
+    }
+}
+
 private struct SidebarToggle: View {
-    @Binding var columns: NavigationSplitViewVisibility
+    @EnvironmentObject var state: AppState
 
     var body: some View {
         Button {
-            withAnimation { columns = columns == .detailOnly ? .all : .detailOnly }
+            withAnimation { state.sidebarShown.toggle() }
         } label: {
             Image(systemName: "sidebar.left").toolbarIcon()
         }
         .buttonStyle(.bare)
         .help("Show or Hide Sidebar (⌃⌘S)")
-    }
-}
-
-/// Swaps the system sidebar button for SidebarToggle where macOS allows it (14 and later).
-private struct OwnSidebarToggle: ViewModifier {
-    @Binding var columns: NavigationSplitViewVisibility
-
-    func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content
-                .toolbar(removing: .sidebarToggle)
-                .toolbar {
-                    ToolbarItem(placement: .navigation) { SidebarToggle(columns: $columns) }
-                        .withoutGlass()
-                }
-        } else {
-            content
-        }
     }
 }
 
@@ -186,9 +241,6 @@ private struct FocusToggle: View {
 
 struct SidebarView: View {
     @EnvironmentObject var state: AppState
-    @Binding var columns: NavigationSplitViewVisibility
-    /// The toolbar keeps a collapsed sidebar's items around, so they go when it does.
-    let showsActions: Bool
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -196,6 +248,7 @@ struct SidebarView: View {
                 TreeRows(nodes: state.tree)
             }
             .listStyle(.sidebar)
+            .labelStyle(AccentIcon())
             .scrollContentBackground(.hidden)
             // Roomy rows, like Finder's large sidebar setting, so files are easy to hit.
             .environment(\.sidebarRowSize, .large)
@@ -217,17 +270,6 @@ struct SidebarView: View {
             .onChange(of: state.renameTarget) { target in
                 if let target { withAnimation { proxy.scrollTo(target) } }
             }
-        }
-        // Sits in the sidebar's half of the title bar, beside the sidebar toggle.
-        .modifier(OwnSidebarToggle(columns: $columns))
-        .toolbar {
-            ToolbarItemGroup {
-                if showsActions {
-                    Spacer()
-                    SidebarActions()
-                }
-            }
-            .withoutGlass()
         }
         .overlay {
             if state.tree.isEmpty {
@@ -366,29 +408,6 @@ private struct TitleField: View {
     }
 }
 
-/// Hides the left-aligned window title, which TitleField replaces.
-private struct HideSystemTitle: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 15.0, *) {
-            content.toolbar(removing: .title)
-        } else {
-            content.background(TitleHider())
-        }
-    }
-}
-
-private struct TitleHider: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { Hider() }
-    func updateNSView(_ view: NSView, context: Context) {}
-
-    private final class Hider: NSView {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            window?.titleVisibility = .hidden
-        }
-    }
-}
-
 private struct EmptyEditor: View {
     var body: some View {
         VStack(spacing: 8) {
@@ -442,16 +461,4 @@ private struct BareButtonStyle: ButtonStyle {
 
 private extension ButtonStyle where Self == BareButtonStyle {
     static var bare: BareButtonStyle { BareButtonStyle() }
-}
-
-private extension ToolbarContent {
-    /// Drops the glass capsule macOS 26 puts behind toolbar items.
-    @ToolbarContentBuilder
-    func withoutGlass() -> some ToolbarContent {
-        if #available(macOS 26.0, *) {
-            sharedBackgroundVisibility(.hidden)
-        } else {
-            self
-        }
-    }
 }

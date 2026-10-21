@@ -13,6 +13,9 @@ struct QuillApp: App {
                 .tint(Color(nsColor: Theme.accent))
                 .frame(minWidth: 640, minHeight: 420)
         }
+        // No title (Quill's bar has its own) and no title bar fill: the window buttons sit in
+        // a strip of the page above Quill's bar.
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1100, height: 760)
         .commands { QuillCommands(state: state) }
     }
@@ -73,6 +76,11 @@ struct QuillCommands: Commands {
         }
 
         CommandGroup(before: .toolbar) {
+            Button(state.sidebarShown ? "Hide Sidebar" : "Show Sidebar") {
+                withAnimation { state.sidebarShown.toggle() }
+            }
+            .keyboardShortcut("s", modifiers: [.control, .command])
+            Divider()
             Toggle("Focus Mode", isOn: $state.focusEnabled)
                 .keyboardShortcut("d", modifiers: [.command, .shift])
             Picker("Focus On", selection: $state.focusStyle) {

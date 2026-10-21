@@ -19,6 +19,8 @@ final class AppState: ObservableObject {
     @Published var fontSize: Double { didSet { defaults.set(fontSize, forKey: "fontSize") } }
     @Published var editorFont: EditorFont { didSet { defaults.set(editorFont.rawValue, forKey: "editorFont") } }
 
+    /// Whether the library sidebar is out. Animate changes so it slides.
+    @Published var sidebarShown = true
     @Published var renameTarget: URL?
     @Published var renameText = ""
     /// Folders open in the sidebar.
