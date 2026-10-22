@@ -24,7 +24,7 @@ struct EditorView: UIViewRepresentable {
     func makeUIView(context: Context) -> FocusTextView {
         // Explicit TextKit 1 stack, as on the Mac: the highlighter styles the storage directly.
         let storage = NSTextStorage()
-        let layout = NSLayoutManager()
+        let layout = FocusLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
         container.widthTracksTextView = true

@@ -40,13 +40,6 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         storage.endEditing()
     }
 
-    /// Restyles just `range`, e.g. to undo the focus dimming laid over it.
-    func restyle(_ storage: NSTextStorage, in range: NSRange) {
-        storage.beginEditing()
-        apply(storage, in: range, fences: fenceLines(storage.string))
-        storage.endEditing()
-    }
-
     func textStorage(_ storage: NSTextStorage, didProcessEditing mask: TextEditActions,
                      range: NSRange, changeInLength delta: Int) {
         guard mask.contains(.editedCharacters) else { return }

@@ -111,35 +111,16 @@ final class FocusTextView: UITextView {
 
     // MARK: Focus mode
 
-    /// Dims everything but the sentence or paragraph being written. TextKit on iOS has no
-    /// temporary attributes, so the dimming goes into the text storage: the focus paragraph
-    /// is restyled to bring its colors back, and the rest is greyed over.
+    /// Dims everything but the sentence or paragraph being written. The dimming happens as
+    /// the text is drawn (see FocusLayoutManager), never in the text storage: an edit there,
+    /// even to colors alone, would wipe iOS's spelling marks.
     func updateFocus(force: Bool = false) {
-        guard let highlighter else { return }
-        let length = textStorage.length
-        guard focusEnabled, length > 0 else {
-            if litFocus != nil {
-                litFocus = nil
-                highlighter.highlightAll(textStorage)
-            }
-            return
-        }
-        let focus = focusRange()
+        guard let manager = layoutManager as? FocusLayoutManager else { return }
+        let focus = focusEnabled && textStorage.length > 0 ? focusRange() : nil
         guard force || focus != litFocus else { return }
         litFocus = focus
-        let ns = textStorage.string as NSString
-        textStorage.beginEditing()
-        highlighter.restyle(textStorage, in: ns.paragraphRange(for: focus))
-        if focus.location > 0 {
-            textStorage.addAttribute(.foregroundColor, value: Theme.dimmed,
-                                     range: NSRange(location: 0, length: focus.location))
-        }
-        let end = NSMaxRange(focus)
-        if end < length {
-            textStorage.addAttribute(.foregroundColor, value: Theme.dimmed,
-                                     range: NSRange(location: end, length: length - end))
-        }
-        textStorage.endEditing()
+        manager.focus = focus
+        manager.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: textStorage.length))
     }
 
     private func focusRange() -> NSRange {
@@ -293,6 +274,40 @@ final class FocusTextView: UITextView {
             // The keyboard reads these when it comes up; one already up needs telling.
             if isFirstResponder { reloadInputViews() }
         }
+    }
+}
+
+/// Draws the text outside `focus` in the dimmed gray, as the Mac app does with temporary
+/// attributes, which TextKit on iOS doesn't have.
+final class FocusLayoutManager: NSLayoutManager {
+    /// The characters drawn in their own colors; nil draws everything that way.
+    var focus: NSRange?
+    private var dimming = false
+
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+        guard let focus else { return super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin) }
+        let lit = glyphRange(forCharacterRange: focus, actualCharacterRange: nil)
+        let start = glyphsToShow.location, end = NSMaxRange(glyphsToShow)
+        let litStart = min(max(lit.location, start), end), litEnd = min(max(NSMaxRange(lit), litStart), end)
+        for (range, dim) in [(NSRange(location: start, length: litStart - start), true),
+                             (NSRange(location: litStart, length: litEnd - litStart), false),
+                             (NSRange(location: litEnd, length: end - litEnd), true)] where range.length > 0 {
+            dimming = dim
+            super.drawGlyphs(forGlyphRange: range, at: origin)
+        }
+        dimming = false
+    }
+
+    override func showCGGlyphs(_ glyphs: UnsafePointer<CGGlyph>, positions: UnsafePointer<CGPoint>, count glyphCount: Int,
+                               font: UIFont, textMatrix: CGAffineTransform,
+                               attributes: [NSAttributedString.Key: Any] = [:], in context: CGContext) {
+        var attributes = attributes
+        if dimming {
+            attributes[.foregroundColor] = Theme.dimmed
+            context.setFillColor(Theme.dimmed.cgColor)
+        }
+        super.showCGGlyphs(glyphs, positions: positions, count: glyphCount, font: font, textMatrix: textMatrix,
+                           attributes: attributes, in: context)
     }
 }
 
