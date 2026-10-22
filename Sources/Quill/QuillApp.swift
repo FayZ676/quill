@@ -1,10 +1,14 @@
 import AppKit
+import Sparkle
 import SwiftUI
 
 @main
 struct QuillApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @ObservedObject private var state = AppState.shared
+    // Checks the release feed daily (see SUFeedURL in Info.plist) and offers to install.
+    private let updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil,
+                                                       userDriverDelegate: nil)
 
     var body: some Scene {
         Window("Quill", id: "main") {
@@ -20,7 +24,12 @@ struct QuillApp: App {
         // a strip of the page above Quill's bar.
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1100, height: 760)
-        .commands { QuillCommands(state: state) }
+        .commands {
+            QuillCommands(state: state)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.checkForUpdates(nil) }
+            }
+        }
     }
 }
 

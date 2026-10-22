@@ -28,6 +28,14 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!-- Sparkle: the feed is attached to every GitHub release, so "latest" is always current. -->
+    <key>SUFeedURL</key>
+    <string>https://github.com/FayZ676/quill/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>2egoB9BAMcekk/rnnrfEUwDX3OGdEOCLJJ2UZ9lpBf0=</string>
+    <!-- Check daily without first asking permission. -->
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <key>NSHumanReadableCopyright</key>
     <string>iA Writer fonts © Information Architects Inc., SIL Open Font License.</string>
     <key>CFBundleDocumentTypes</key>

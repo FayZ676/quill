@@ -6,7 +6,7 @@ A minimal, iA Writer–style Markdown editor for macOS 13+: a library of plain-t
 
     ./build.sh          # → build/Quill-1.0.0.dmg (universal; notarized when a Developer ID certificate is present)
 
-Open the DMG and drag Quill to Applications. Set `VERSION=1.1.0 ./build.sh` to stamp a different version.
+Open the DMG and drag Quill to Applications. Set `VERSION=1.1.0 ./build.sh` to stamp a different version. The build also writes `Quill.zip` and `appcast.xml`, the in-app update and its feed: installed copies check for updates daily through [Sparkle](https://sparkle-project.org). See `CLAUDE.md` for the release steps.
 
 ## iPhone and iPad
 
