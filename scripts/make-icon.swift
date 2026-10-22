@@ -58,5 +58,14 @@ color(CGFloat(hex >> 16 & 0xFF), CGFloat(hex >> 8 & 0xFF), CGFloat(hex & 0xFF)).
 NSBezierPath(roundedRect: caret, xRadius: 11, yRadius: 11).fill()
 
 NSGraphicsContext.restoreGraphicsState()
+// The App Store rejects iOS icons with an alpha channel, even a fully opaque one.
+var output = rep
+if fullBleed {
+    let opaque = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
+                           space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                           bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    opaque.draw(rep.cgImage!, in: CGRect(x: 0, y: 0, width: px, height: px))
+    output = NSBitmapImageRep(cgImage: opaque.makeImage()!)
+}
 let out = URL(fileURLWithPath: CommandLine.arguments[1])
-try! rep.representation(using: .png, properties: [:])!.write(to: out)
+try! output.representation(using: .png, properties: [:])!.write(to: out)
