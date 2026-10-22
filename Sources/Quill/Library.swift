@@ -180,6 +180,18 @@ final class AppState: ObservableObject {
     }
 
     /// Moves a library item into `dir`, or copies it in when it comes from outside the library.
+    /// Every folder in the library, depth-first, with its depth (the library itself is 0).
+    var folders: [(url: URL, depth: Int)] {
+        func walk(_ nodes: [FileNode], _ depth: Int) -> [(URL, Int)] {
+            nodes.filter(\.isDirectory).flatMap { [($0.url, depth)] + walk($0.children ?? [], depth + 1) }
+        }
+        return [(root, 0)] + walk(tree, 1)
+    }
+
+    func moveTargets(for item: URL) -> [(url: URL, depth: Int)] {
+        folders.filter { $0.url != item.deletingLastPathComponent() && $0.url != item && !isInside($0.url, item) }
+    }
+
     func move(_ item: URL, into dir: URL) {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir) else { return }

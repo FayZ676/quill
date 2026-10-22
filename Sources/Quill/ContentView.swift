@@ -110,6 +110,7 @@ private struct DetailBar: View {
             SidebarToggle()
             Spacer()
             FocusToggle()
+            MoreMenu()
         }
         .overlay {
             if let file = state.openFile { TitleField(file: file) }
@@ -247,6 +248,49 @@ private struct FocusToggle: View {
         }
         .buttonStyle(.bare)
         .help("Focus Mode (⇧⌘D)")
+    }
+}
+
+/// Writing options and the open file's actions, as in the iPhone editor's ⋯ menu.
+private struct MoreMenu: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Menu {
+            Toggle("Focus Mode", isOn: $state.focusEnabled)
+            Picker("Focus On", selection: $state.focusStyle) {
+                ForEach(FocusStyle.allCases) { Text($0.rawValue).tag($0) }
+            }
+            Toggle("Typewriter Scrolling", isOn: $state.typewriter)
+            Picker("Font", selection: $state.editorFont) {
+                ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
+            }
+            Button("Smaller") { state.fontSize = max(11, state.fontSize - 1) }
+            Button("Bigger") { state.fontSize = min(32, state.fontSize + 1) }
+            if let file = state.openFile {
+                Divider()
+                Button("Rename…") { state.beginRename(file) }
+                Menu("Move To") {
+                    ForEach(state.moveTargets(for: file), id: \.url) { folder in
+                        Button(String(repeating: "    ", count: max(0, folder.depth - 1))
+                               + folder.url.lastPathComponent) {
+                            state.move(file, into: folder.url)
+                        }
+                    }
+                }
+                ShareLink(item: file)
+                Button("Reveal in Finder") { state.reveal(file) }
+                Divider()
+                Button("Move to Trash") { state.trash(file) }
+            }
+        } label: {
+            Image(systemName: "ellipsis").toolbarIcon()
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bare)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More")
     }
 }
 
