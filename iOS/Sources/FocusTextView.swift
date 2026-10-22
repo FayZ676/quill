@@ -64,6 +64,7 @@ final class FocusTextView: UITextView {
         caretView.show(at: caret)
     }
 
+    @discardableResult
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         if became { updateCaret() }
