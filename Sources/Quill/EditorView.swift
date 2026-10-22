@@ -22,12 +22,7 @@ struct EditorView: NSViewRepresentable {
         tv.allowsUndo = true
         tv.usesFindBar = true
         tv.isIncrementalSearchingEnabled = true
-        tv.isAutomaticQuoteSubstitutionEnabled = false
-        tv.isAutomaticDashSubstitutionEnabled = false
-        tv.isAutomaticTextReplacementEnabled = false
-        tv.isContinuousSpellCheckingEnabled = true
-        tv.isAutomaticSpellingCorrectionEnabled = false
-        if #available(macOS 14.0, *) { tv.inlinePredictionType = .no }
+        tv.textInput = state.textInput
         tv.drawsBackground = true
         tv.backgroundColor = Theme.background
         tv.insertionPointColor = Theme.accent
@@ -98,6 +93,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView = tv
         state.textView = tv
         state.flushSave = { [weak self] in self?.save() }
+        // Edit › Spelling and Grammar and Substitutions change the text view directly.
+        tv.textInputChanged = { [weak self] in self?.state.textInput = $0 }
     }
 
     func sync() {
@@ -113,6 +110,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             tv.updateLayout()
         }
         tv.typewriter = state.typewriter
+        if tv.textInput != state.textInput { tv.textInput = state.textInput }
         if tv.focusEnabled != state.focusEnabled || tv.focusStyle != state.focusStyle {
             tv.focusEnabled = state.focusEnabled
             tv.focusStyle = state.focusStyle

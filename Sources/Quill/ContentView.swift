@@ -110,7 +110,7 @@ private struct DetailBar: View {
             SidebarToggle()
             Spacer()
             FocusToggle()
-            MoreMenu()
+            MoreButton()
         }
         .overlay {
             if let file = state.openFile { TitleField(file: file) }
@@ -251,45 +251,20 @@ private struct FocusToggle: View {
     }
 }
 
-/// Writing options and the open file's actions, as in the iPhone editor's ⋯ menu.
-private struct MoreMenu: View {
+/// Opens the ⋯ menu (see MoreMenu) under itself.
+private struct MoreButton: View {
     @EnvironmentObject var state: AppState
+    @State private var anchor = MenuAnchor()
 
     var body: some View {
-        Menu {
-            Toggle("Focus Mode", isOn: $state.focusEnabled)
-            Picker("Focus On", selection: $state.focusStyle) {
-                ForEach(FocusStyle.allCases) { Text($0.rawValue).tag($0) }
-            }
-            Toggle("Typewriter Scrolling", isOn: $state.typewriter)
-            Picker("Font", selection: $state.editorFont) {
-                ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
-            }
-            Button("Smaller") { state.fontSize = max(11, state.fontSize - 1) }
-            Button("Bigger") { state.fontSize = min(32, state.fontSize + 1) }
-            if let file = state.openFile {
-                Divider()
-                Button("Rename…") { state.beginRename(file) }
-                Menu("Move To") {
-                    ForEach(state.moveTargets(for: file), id: \.url) { folder in
-                        Button(String(repeating: "    ", count: max(0, folder.depth - 1))
-                               + folder.url.lastPathComponent) {
-                            state.move(file, into: folder.url)
-                        }
-                    }
-                }
-                ShareLink(item: file)
-                Button("Reveal in Finder") { state.reveal(file) }
-                Divider()
-                Button("Move to Trash") { state.trash(file) }
-            }
+        Button {
+            guard let view = anchor.view else { return }
+            MoreMenu.make(state).popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.height + 4 : -4), in: view)
         } label: {
             Image(systemName: "ellipsis").toolbarIcon()
         }
-        .menuStyle(.button)
         .buttonStyle(.bare)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .background(MenuAnchorView(anchor: anchor))
         .help("More")
     }
 }

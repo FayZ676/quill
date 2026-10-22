@@ -186,7 +186,7 @@ private struct PageColorRow: UIViewRepresentable {
     }
 }
 
-/// Everything you can do to a document or folder, for its context menu and the editor's ⋯ menu.
+/// Everything you can do to a document or folder, for its context menu in the library.
 private struct ItemMenu: View {
     @EnvironmentObject var state: AppState
     let url: URL
@@ -229,17 +229,7 @@ private struct EditorScreen: View {
                     state.focusEnabled.toggle()
                 }
                 Menu {
-                    ViewOptions()
-                    ControlGroup {
-                        Button("Smaller", systemImage: "textformat.size.smaller") {
-                            state.fontSize = max(11, state.fontSize - 1)
-                        }
-                        Button("Bigger", systemImage: "textformat.size.larger") {
-                            state.fontSize = min(32, state.fontSize + 1)
-                        }
-                    }
-                    Divider()
-                    ItemMenu(url: page.url)
+                    OptionsMenu(url: page.url)
                 } label: {
                     BarIcon(symbol: "ellipsis")
                 }
@@ -263,6 +253,64 @@ private struct EditorScreen: View {
         }
         .background(Color(uiColor: Theme.background).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+/// The editor's ⋯ menu, laid out like the Mac app's: the same sections and options, as far
+/// as iOS has them.
+private struct OptionsMenu: View {
+    @EnvironmentObject var state: AppState
+    let url: URL
+
+    var body: some View {
+        Section("Focus") {
+            Toggle("Focus Mode", isOn: $state.focusEnabled)
+            Picker("Focus On", selection: $state.focusStyle) {
+                ForEach(FocusStyle.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Toggle("Typewriter Scrolling", isOn: $state.typewriter)
+        }
+        Section("Font") {
+            Picker("Typeface", selection: $state.editorFont) {
+                ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Button("Smaller") { state.fontSize = max(11, state.fontSize - 1) }
+            Button("Bigger") { state.fontSize = min(32, state.fontSize + 1) }
+        }
+        Section("Spelling and Grammar") {
+            Toggle("Auto-Correction", isOn: $state.textInput.correctSpelling)
+            Toggle("Check Spelling", isOn: $state.textInput.checkSpelling)
+            Toggle("Predictive", isOn: $state.textInput.predictive)
+            checkAll(TextInput.spelling)
+        }
+        Section("Substitutions") {
+            Toggle("Smart Copy/Paste", isOn: $state.textInput.smartCopyPaste)
+            Toggle("Smart Quotes", isOn: $state.textInput.smartQuotes)
+            Toggle("Smart Dashes", isOn: $state.textInput.smartDashes)
+            checkAll(TextInput.substitutions)
+        }
+        Section("File") {
+            Button("Rename…") { state.beginRename(url) }
+            Menu("Move To") {
+                ForEach(state.moveTargets(for: url), id: \.url) { folder in
+                    Button(String(repeating: "    ", count: max(0, folder.depth - 1))
+                           + (folder.depth == 0 ? state.libraryName : folder.url.lastPathComponent)) {
+                        state.move(url, into: folder.url)
+                    }
+                }
+            }
+            // Text alone: an icon would give the whole section an icon column, unlike the rest.
+            ShareLink(item: url) { Text("Share…") }
+        }
+        Section {
+            Button("Delete", role: .destructive) { state.deleteTarget = url }
+        }
+    }
+
+    private func checkAll(_ group: TextInput.Group) -> some View {
+        Button(state.textInput.allOn(group) ? "Uncheck All" : "Check All") { state.textInput.toggleAll(group) }
     }
 }
 
@@ -346,21 +394,66 @@ private struct BarButton: View {
 
 // MARK: Settings
 
-/// Writing options, shared by the editor's ⋯ menu and Settings.
-private struct ViewOptions: View {
+/// The Focus and Font sections, as in the Mac app's ⋯ menu: for the editor's ⋯ panel and
+/// Settings.
+private struct WritingSections: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        Toggle("Focus Mode", isOn: $state.focusEnabled)
-        Picker("Focus On", selection: $state.focusStyle) {
-            ForEach(FocusStyle.allCases) { Text($0.rawValue).tag($0) }
+        Section {
+            Toggle("Focus Mode", isOn: $state.focusEnabled)
+            LabeledContent("Focus On") {
+                Picker("Focus On", selection: $state.focusStyle) {
+                    ForEach(FocusStyle.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+            Toggle("Typewriter Scrolling", isOn: $state.typewriter)
+        } header: {
+            Text("Focus").appFont(13, relativeTo: .footnote)
         }
-        .pickerStyle(.menu)
-        Toggle("Typewriter Scrolling", isOn: $state.typewriter)
-        Picker("Font", selection: $state.editorFont) {
-            ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
+        Section {
+            LabeledContent("Typeface") {
+                Picker("Typeface", selection: $state.editorFont) {
+                    ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
+            Stepper("Size: \(Int(state.fontSize))", value: $state.fontSize, in: 11...32)
+        } header: {
+            Text("Font").appFont(13, relativeTo: .footnote)
         }
-        .pickerStyle(.menu)
+    }
+}
+
+/// Spelling and typing aids, in iA Writer's order, grouped as on the Mac: for the editor's
+/// ⋯ panel and Settings.
+private struct TextInputSections: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Section {
+            Toggle("Auto-Correction", isOn: $state.textInput.correctSpelling)
+            Toggle("Check Spelling", isOn: $state.textInput.checkSpelling)
+            Toggle("Predictive", isOn: $state.textInput.predictive)
+            toggleAll(TextInput.spelling)
+        } header: {
+            Text("Spelling and Grammar").appFont(13, relativeTo: .footnote)
+        }
+        Section {
+            Toggle("Smart Copy/Paste", isOn: $state.textInput.smartCopyPaste)
+            Toggle("Smart Quotes", isOn: $state.textInput.smartQuotes)
+            Toggle("Smart Dashes", isOn: $state.textInput.smartDashes)
+            toggleAll(TextInput.substitutions)
+        } header: {
+            Text("Substitutions").appFont(13, relativeTo: .footnote)
+        }
+    }
+
+    private func toggleAll(_ group: TextInput.Group) -> some View {
+        Button(state.textInput.allOn(group) ? "Uncheck All" : "Check All") { state.textInput.toggleAll(group) }
     }
 }
 
@@ -394,12 +487,8 @@ private struct SettingsView: View {
                     Text("To write in the same files as Quill on your Mac, choose its library in iCloud Drive (Documents › Quill). Changes sync through iCloud.")
                         .appFont(13, relativeTo: .footnote)
                 }
-                Section {
-                    ViewOptions()
-                    Stepper("Text Size: \(Int(state.fontSize))", value: $state.fontSize, in: 11...32)
-                } header: {
-                    Text("Writing").appFont(13, relativeTo: .footnote)
-                }
+                WritingSections()
+                TextInputSections()
             }
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())

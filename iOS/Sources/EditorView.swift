@@ -36,11 +36,7 @@ struct EditorView: UIViewRepresentable {
         tv.tintColor = Theme.accent
         tv.alwaysBounceVertical = true
         tv.keyboardDismissMode = .interactive
-        // Markdown wants straight quotes and plain hyphens.
-        tv.smartQuotesType = .no
-        tv.smartDashesType = .no
-        tv.smartInsertDeleteType = .no
-        tv.spellCheckingType = .yes
+        tv.textInput = state.textInput
         tv.highlighter = context.coordinator.highlighter
         storage.delegate = context.coordinator.highlighter
         tv.delegate = context.coordinator
@@ -101,6 +97,7 @@ final class EditorCoordinator: NSObject, UITextViewDelegate {
             tv.updateFocus(force: true)
         }
         tv.typewriter = state.typewriter
+        if tv.textInput != state.textInput { tv.textInput = state.textInput }
         if tv.focusEnabled != state.focusEnabled || tv.focusStyle != state.focusStyle {
             tv.focusEnabled = state.focusEnabled
             tv.focusStyle = state.focusStyle

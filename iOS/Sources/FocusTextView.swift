@@ -269,6 +269,31 @@ final class FocusTextView: UITextView {
         ])
         return bar
     }
+
+    // MARK: Text input
+
+    var textInput: TextInput {
+        get {
+            var input = TextInput()
+            input.checkSpelling = spellCheckingType == .yes
+            input.correctSpelling = autocorrectionType == .yes
+            input.predictive = inlinePredictionType == .yes
+            input.smartCopyPaste = smartInsertDeleteType == .yes
+            input.smartQuotes = smartQuotesType == .yes
+            input.smartDashes = smartDashesType == .yes
+            return input
+        }
+        set {
+            spellCheckingType = newValue.checkSpelling ? .yes : .no
+            autocorrectionType = newValue.correctSpelling ? .yes : .no
+            inlinePredictionType = newValue.predictive ? .yes : .no
+            smartInsertDeleteType = newValue.smartCopyPaste ? .yes : .no
+            smartQuotesType = newValue.smartQuotes ? .yes : .no
+            smartDashesType = newValue.smartDashes ? .yes : .no
+            // The keyboard reads these when it comes up; one already up needs telling.
+            if isFirstResponder { reloadInputViews() }
+        }
+    }
 }
 
 /// The caret: a glowing bar that holds steady while the writer types or moves, then

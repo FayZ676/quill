@@ -187,6 +187,79 @@ final class FocusTextView: NSTextView {
         insertText(edit.text, replacementRange: edit.range)
         if let selection = edit.selection { setSelectedRange(selection) }
     }
+
+    // MARK: Text input
+
+    /// Called when the Edit menu's spelling and substitution items change a setting.
+    var textInputChanged: ((TextInput) -> Void)?
+
+    var textInput: TextInput {
+        get {
+            var input = TextInput()
+            input.checkSpelling = isContinuousSpellCheckingEnabled
+            input.checkGrammar = isGrammarCheckingEnabled
+            input.correctSpelling = isAutomaticSpellingCorrectionEnabled
+            if #available(macOS 14.0, *) { input.predictive = inlinePredictionType == .yes }
+            input.smartCopyPaste = smartInsertDeleteEnabled
+            input.smartQuotes = isAutomaticQuoteSubstitutionEnabled
+            input.smartDashes = isAutomaticDashSubstitutionEnabled
+            input.textReplacement = isAutomaticTextReplacementEnabled
+            return input
+        }
+        set {
+            isContinuousSpellCheckingEnabled = newValue.checkSpelling
+            isGrammarCheckingEnabled = newValue.checkGrammar
+            isAutomaticSpellingCorrectionEnabled = newValue.correctSpelling
+            if #available(macOS 14.0, *) { inlinePredictionType = newValue.predictive ? .yes : .no }
+            smartInsertDeleteEnabled = newValue.smartCopyPaste
+            isAutomaticQuoteSubstitutionEnabled = newValue.smartQuotes
+            isAutomaticDashSubstitutionEnabled = newValue.smartDashes
+            isAutomaticTextReplacementEnabled = newValue.textReplacement
+            // Turning a check on only covers what's typed next; mark what's already there.
+            // Spelling and grammar only, so nothing on the page is corrected or replaced.
+            var types: NSTextCheckingTypes = 0
+            if newValue.checkSpelling { types |= NSTextCheckingResult.CheckingType.spelling.rawValue }
+            if newValue.checkGrammar { types |= NSTextCheckingResult.CheckingType.grammar.rawValue }
+            if types != 0 {
+                checkText(in: NSRange(location: 0, length: (string as NSString).length), types: types, options: [:])
+            }
+        }
+    }
+
+    override func toggleContinuousSpellChecking(_ sender: Any?) {
+        super.toggleContinuousSpellChecking(sender)
+        textInputChanged?(textInput)
+    }
+
+    override func toggleGrammarChecking(_ sender: Any?) {
+        super.toggleGrammarChecking(sender)
+        textInputChanged?(textInput)
+    }
+
+    override func toggleAutomaticSpellingCorrection(_ sender: Any?) {
+        super.toggleAutomaticSpellingCorrection(sender)
+        textInputChanged?(textInput)
+    }
+
+    override func toggleSmartInsertDelete(_ sender: Any?) {
+        super.toggleSmartInsertDelete(sender)
+        textInputChanged?(textInput)
+    }
+
+    override func toggleAutomaticQuoteSubstitution(_ sender: Any?) {
+        super.toggleAutomaticQuoteSubstitution(sender)
+        textInputChanged?(textInput)
+    }
+
+    override func toggleAutomaticDashSubstitution(_ sender: Any?) {
+        super.toggleAutomaticDashSubstitution(sender)
+        textInputChanged?(textInput)
+    }
+
+    override func toggleAutomaticTextReplacement(_ sender: Any?) {
+        super.toggleAutomaticTextReplacement(sender)
+        textInputChanged?(textInput)
+    }
 }
 
 /// The caret: a glowing bar that holds steady while the writer types or moves, then
