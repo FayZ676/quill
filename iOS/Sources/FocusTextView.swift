@@ -30,6 +30,50 @@ final class FocusTextView: UITextView {
     override func layoutSubviews() {
         super.layoutSubviews()
         updateLayout()
+        updateCaret()
+    }
+
+    // MARK: Caret
+
+    private static let caretWidth: CGFloat = 2.5
+    private let caretView = CaretView()
+
+    /// UIKit's caret blinks on its own clock and runs the full line height, line spacing
+    /// included. Like the Mac app's, this one is a glowing layer that fades. UIKit still
+    /// shows and hides its own cursor view as it likes, so that view is masked out entirely.
+    private func hideSystemCaret() {
+        func cursors(in view: UIView) -> [UIView] {
+            view.subviews.flatMap { $0 is any UITextCursorView ? [$0] : cursors(in: $0) }
+        }
+        for cursor in cursors(in: self) where cursor.layer.mask == nil {
+            cursor.layer.mask = CALayer()
+        }
+    }
+
+    /// Puts the caret where the selection is, or hides it when there's a selection or no focus.
+    func updateCaret() {
+        hideSystemCaret()
+        guard isFirstResponder, selectedRange.length == 0, let end = selectedTextRange?.end else {
+            return caretView.hide()
+        }
+        var caret = caretRect(for: end)
+        guard !caret.isNull, !caret.isInfinite else { return caretView.hide() }
+        caret.size.width = Self.caretWidth
+        caret.size.height = min(caret.height, fonts.regular.lineHeight)
+        if caretView.superview == nil { addSubview(caretView) }
+        caretView.show(at: caret)
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { updateCaret() }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { caretView.hide() }
+        return resigned
     }
 
     /// Sizes the text column to a comfortable line length and centers it. Heading marks
@@ -128,9 +172,13 @@ final class FocusTextView: UITextView {
         setContentOffset(CGPoint(x: contentOffset.x, y: y), animated: animated)
     }
 
-    /// UIKit scrolls just enough to keep the caret visible; typewriter mode keeps it centered.
+    /// UIKit scrolls just enough to keep the caret visible, leaving the line being written
+    /// flush against the keyboard; this keeps a couple of lines clear around it instead.
+    /// Typewriter mode keeps it centered.
     override func scrollRectToVisible(_ rect: CGRect, animated: Bool) {
-        if typewriter { centerCaret(animated: animated) } else { super.scrollRectToVisible(rect, animated: animated) }
+        if typewriter { return centerCaret(animated: animated) }
+        let room = fonts.regular.lineHeight * 2
+        super.scrollRectToVisible(rect.insetBy(dx: 0, dy: -room), animated: animated)
     }
 
     // MARK: Markdown editing
@@ -219,5 +267,67 @@ final class FocusTextView: UITextView {
             stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
         ])
         return bar
+    }
+}
+
+/// The caret: a glowing bar that holds steady while the writer types or moves, then
+/// breathes in and out, as in the Mac app.
+private final class CaretView: UIView {
+    private static let glow: CGFloat = 4
+    private static let pad: CGFloat = 12
+    private let bar = UIView()
+
+    init() {
+        super.init(frame: .zero)
+        isHidden = true
+        isUserInteractionEnabled = false
+        bar.backgroundColor = Theme.accent
+        bar.layer.cornerRadius = 1
+        bar.layer.shadowOffset = .zero
+        bar.layer.shadowRadius = Self.glow
+        bar.layer.shadowOpacity = 0.85
+        addSubview(bar)
+        applyColor()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: CaretView, _) in view.applyColor() }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Shows the caret at `caret`. A move (every keystroke is one) holds it solid for a beat again.
+    func show(at caret: CGRect) {
+        // The view is padded so the glow isn't clipped at its edges.
+        let frame = caret.insetBy(dx: -Self.pad, dy: -Self.pad)
+        guard isHidden || frame != self.frame else { return }
+        UIView.performWithoutAnimation {
+            self.frame = frame
+            bar.frame = CGRect(x: Self.pad, y: Self.pad, width: caret.width, height: caret.height)
+        }
+        isHidden = false
+        superview?.bringSubviewToFront(self)
+        restartPulse()
+    }
+
+    func hide() {
+        isHidden = true
+        layer.removeAnimation(forKey: "pulse")
+    }
+
+    /// Solid for a beat, then a slow fade out and back in, forever.
+    private func restartPulse() {
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1
+        pulse.toValue = 0
+        pulse.duration = 0.55
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pulse.beginTime = CACurrentMediaTime() + 0.5
+        pulse.fillMode = .backwards
+        layer.add(pulse, forKey: "pulse")
+    }
+
+    /// CGColors don't follow light and dark mode on their own, so resolve the glow's per appearance.
+    private func applyColor() {
+        bar.layer.shadowColor = Theme.accent.resolvedColor(with: traitCollection).cgColor
     }
 }

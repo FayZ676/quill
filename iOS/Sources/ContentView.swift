@@ -75,7 +75,10 @@ private struct FolderView: View {
     var body: some View {
         let nodes = state.children(of: url)
         VStack(spacing: 0) {
-            Header {
+            // A folder is named in the bar, like a document, with a slash to mark it a folder.
+            // The library needs no name.
+            Header(title: isLibrary ? "" : url.lastPathComponent + " /",
+                   titleAction: isLibrary ? nil : { state.beginRename(url) }) {
                 if isLibrary {
                     BarButton("Settings", "gearshape") { showingSettings = true }
                 } else {
@@ -94,20 +97,7 @@ private struct FolderView: View {
 
     private func list(_ nodes: [FileNode]) -> some View {
         List {
-            // A folder is named in the list, not the bar, as in the Mac app's sidebar.
-            // The library needs no name.
-            if isLibrary {
-                rows(nodes)
-            } else {
-                Section {
-                    rows(nodes)
-                } header: {
-                    Text(url.lastPathComponent)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
-                }
-            }
+            rows(nodes)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -226,7 +216,9 @@ private struct EditorScreen: View {
             Header(title: FileNode.displayName(page.url), titleAction: { state.beginRename(page.url) }) {
                 BarButton("Back", "chevron.left") { state.goBack() }
             } trailing: {
-                BarButton("Focus Mode", state.focusEnabled ? "eye.fill" : "eye") { state.focusEnabled.toggle() }
+                BarButton("Focus Mode", state.focusEnabled ? "eye.fill" : "eye", active: state.focusEnabled) {
+                    state.focusEnabled.toggle()
+                }
                 Menu {
                     ViewOptions()
                     ControlGroup {
@@ -311,11 +303,13 @@ private struct Header<Leading: View, Trailing: View>: View {
 
 private struct BarIcon: View {
     let symbol: String
+    /// Drawn in the accent while its mode is on, as the Mac app's focus eye is.
+    var active = false
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 20))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(active ? Color.accentColor : Color.secondary)
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
@@ -324,16 +318,18 @@ private struct BarIcon: View {
 private struct BarButton: View {
     let label: String
     let symbol: String
+    let active: Bool
     let action: () -> Void
 
-    init(_ label: String, _ symbol: String, action: @escaping () -> Void) {
+    init(_ label: String, _ symbol: String, active: Bool = false, action: @escaping () -> Void) {
         self.label = label
         self.symbol = symbol
+        self.active = active
         self.action = action
     }
 
     var body: some View {
-        Button(action: action) { BarIcon(symbol: symbol) }
+        Button(action: action) { BarIcon(symbol: symbol, active: active) }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
     }

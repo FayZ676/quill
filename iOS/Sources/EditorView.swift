@@ -203,6 +203,7 @@ final class EditorCoordinator: NSObject, UITextViewDelegate {
     func textViewDidChangeSelection(_ textView: UITextView) {
         self.textView?.updateFocus()
         self.textView?.centerCaret()
+        self.textView?.updateCaret()
     }
 
     func textViewDidEndEditing(_ textView: UITextView) {
