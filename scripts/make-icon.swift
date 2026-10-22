@@ -1,5 +1,5 @@
-// Draws Quill's app icon: a paper-white tile with dimmed text lines, one focused line,
-// and a caret in the accent color. Usage: swift make-icon.swift <output.png> <RRGGBB> [ios]
+// Draws Quill's app icon: a paper-white tile with fading text lines, one focused line,
+// and a glowing caret in the accent color. Usage: swift make-icon.swift <output.png> <RRGGBB> [ios]
 // With "ios", the tile fills the whole square, unrounded and unshadowed: iOS masks it itself.
 import AppKit
 
@@ -41,21 +41,50 @@ NSGraphicsContext.restoreGraphicsState()
 let gradient = NSGradient(starting: color(255, 255, 253), ending: color(238, 238, 234))!
 gradient.draw(in: shape, angle: -90)
 
-// Text lines: dimmed, dimmed, focused + caret, dimmed, dimmed.
 let left: CGFloat = 230
 let lineHeight: CGFloat = 46
-let lines: [(y: CGFloat, width: CGFloat, focused: Bool)] = [
-    (680, 520, false), (590, 440, false), (500, 380, true), (410, 500, false), (320, 300, false),
-]
-for line in lines {
-    let rect = NSRect(x: left, y: line.y - lineHeight / 2, width: line.width, height: lineHeight)
-    (line.focused ? color(38, 38, 40) : color(208, 208, 204)).setFill()
-    NSBezierPath(roundedRect: rect, xRadius: lineHeight / 2, yRadius: lineHeight / 2).fill()
-}
 let caret = NSRect(x: left + 380 + 22, y: 500 - 52, width: 22, height: 104)
 let hex = Int(CommandLine.arguments[2], radix: 16)!
-color(CGFloat(hex >> 16 & 0xFF), CGFloat(hex >> 8 & 0xFF), CGFloat(hex & 0xFF)).setFill()
-NSBezierPath(roundedRect: caret, xRadius: 11, yRadius: 11).fill()
+let accent = color(CGFloat(hex >> 16 & 0xFF), CGFloat(hex >> 8 & 0xFF), CGFloat(hex & 0xFF))
+let caretPath = NSBezierPath(roundedRect: caret, xRadius: 11, yRadius: 11)
+// The caret glows: a soft halo in the accent, taller than wide like the caret, drawn under the
+// lines so they stay crisp.
+NSGraphicsContext.saveGraphicsState()
+let halo = NSAffineTransform()
+halo.translateX(by: caret.midX, yBy: caret.midY)
+halo.scaleX(by: 1, yBy: 1.5)
+halo.concat()
+NSGradient(colors: [accent.withAlphaComponent(0.42), accent.withAlphaComponent(0.14), accent.withAlphaComponent(0)],
+           atLocations: [0, 0.45, 1], colorSpace: .sRGB)!
+    .draw(fromCenter: .zero, radius: 0, toCenter: .zero, radius: 130, options: [])
+NSGraphicsContext.restoreGraphicsState()
+
+// Text lines around the focused one, with the caret. The dimmed lines fade away with their
+// distance from the focused line, as text does in the app.
+let focusY: CGFloat = 500
+let lineGap: CGFloat = 90
+let lines: [(y: CGFloat, width: CGFloat)] = [
+    (770, 470), (680, 520), (590, 440), (500, 380), (410, 500), (320, 300), (230, 420),
+]
+let dimOpacity: [CGFloat] = [1, 1, 0.55, 0.22]
+for line in lines {
+    let rect = NSRect(x: left, y: line.y - lineHeight / 2, width: line.width, height: lineHeight)
+    let distance = Int((abs(line.y - focusY) / lineGap).rounded())
+    (distance == 0 ? color(38, 38, 40) : color(200, 200, 196, dimOpacity[distance])).setFill()
+    NSBezierPath(roundedRect: rect, xRadius: lineHeight / 2, yRadius: lineHeight / 2).fill()
+}
+// Then a tight bright rim. Shadows ignore the full-bleed scale, so it's scaled by hand.
+NSGraphicsContext.saveGraphicsState()
+let rim = NSShadow()
+rim.shadowColor = accent.withAlphaComponent(0.9)
+rim.shadowOffset = .zero
+rim.shadowBlurRadius = 24 * (fullBleed ? CGFloat(px) / tile.width : 1)
+rim.set()
+accent.setFill()
+caretPath.fill()
+NSGraphicsContext.restoreGraphicsState()
+accent.setFill()
+caretPath.fill()
 
 NSGraphicsContext.restoreGraphicsState()
 // The App Store rejects iOS icons with an alpha channel, even a fully opaque one.
