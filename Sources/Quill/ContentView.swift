@@ -358,6 +358,9 @@ private struct NodeRow: View {
                 Label {
                     HStack {
                         Text(node.name)
+                            // Set on the row itself: the sidebar's own font would win over one
+                            // inherited from the window.
+                            .appFont(14)
                             .lineLimit(1)
                             .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
                         Spacer()
@@ -417,7 +420,7 @@ private struct TitleField: View {
                     .help("Click to rename")
             }
         }
-        .font(.system(size: 15, weight: .semibold))
+        .appFont(15, bold: true)
         .frame(minWidth: 160, maxWidth: 420)
         .onChange(of: file) { _ in editing = false }
     }
@@ -432,8 +435,8 @@ private struct TitleField: View {
 private struct EmptyEditor: View {
     var body: some View {
         VStack(spacing: 8) {
-            Text("Nothing open").font(.title2)
-            Text("Press ⌘N to start writing").font(.title3).foregroundStyle(.secondary)
+            Text("Nothing open").appFont(17)
+            Text("Press ⌘N to start writing").appFont(15).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: Theme.background))
@@ -447,7 +450,7 @@ private struct WordCount: View {
     var body: some View {
         let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
         Text("\(stats.words) words · \(minutes) min read")
-            .font(.system(size: 13))
+            .appFont(13)
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)

@@ -107,11 +107,20 @@ private struct FolderView: View {
         .onAppear { state.reloadTree() }
         .overlay {
             if nodes.isEmpty {
+                // Their text set here: the view's own fonts would win over inherited ones.
                 if state.downloading > 0 && isLibrary {
-                    ContentUnavailableView("Downloading from iCloud…", systemImage: "icloud.and.arrow.down")
+                    ContentUnavailableView {
+                        Label { Text("Downloading from iCloud…").appFont(20, bold: true, relativeTo: .title3) }
+                              icon: { Image(systemName: "icloud.and.arrow.down") }
+                    }
                 } else {
-                    ContentUnavailableView("No Documents", systemImage: "doc.text",
-                                           description: Text("Tap \(Image(systemName: "square.and.pencil")) to start writing."))
+                    ContentUnavailableView {
+                        Label { Text("No Documents").appFont(20, bold: true, relativeTo: .title3) }
+                              icon: { Image(systemName: "doc.text") }
+                    } description: {
+                        Text("Tap \(Image(systemName: "square.and.pencil")) to start writing.")
+                            .appFont(17, relativeTo: .body)
+                    }
                 }
             }
         }
@@ -247,7 +256,7 @@ private struct EditorScreen: View {
                     if chrome.downloading {
                         VStack(spacing: 10) {
                             ProgressView()
-                            Text("Downloading from iCloud").font(.footnote).foregroundStyle(.secondary)
+                            Text("Downloading from iCloud").appFont(13, relativeTo: .footnote).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -294,7 +303,7 @@ private struct Header<Leading: View, Trailing: View>: View {
 
     private var titleText: some View {
         Text(title)
-            .font(.system(size: 15, weight: .semibold))
+            .appFont(15, bold: true)
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -366,7 +375,7 @@ private struct SettingsView: View {
             } trailing: {
                 // In line with the form's rows, clear of the sheet's rounded corner.
                 Button("Done") { dismiss() }
-                    .font(.subheadline.weight(.semibold))
+                    .appFont(15, bold: true, relativeTo: .subheadline)
                     .padding(.horizontal, 16)
             }
             // Room above the bar, so it doesn't crowd the top of the sheet.
@@ -379,13 +388,17 @@ private struct SettingsView: View {
                         Button("Use On My iPhone") { state.useLocalLibrary() }
                     }
                 } header: {
-                    Text("Library")
+                    // Headers and footers set here: the form's own fonts would win.
+                    Text("Library").appFont(13, relativeTo: .footnote)
                 } footer: {
                     Text("To write in the same files as Quill on your Mac, choose its library in iCloud Drive (Documents › Quill). Changes sync through iCloud.")
+                        .appFont(13, relativeTo: .footnote)
                 }
-                Section("Writing") {
+                Section {
                     ViewOptions()
                     Stepper("Text Size: \(Int(state.fontSize))", value: $state.fontSize, in: 11...32)
+                } header: {
+                    Text("Writing").appFont(13, relativeTo: .footnote)
                 }
             }
         }
@@ -404,7 +417,7 @@ private struct LibraryChoice: View {
                 .font(.system(size: 52, weight: .light))
                 .foregroundStyle(Color.accentColor)
             Text("Where's your writing?")
-                .font(.title.bold())
+                .appFont(28, bold: true, relativeTo: .title)
             Text("Quill edits plain Markdown files in a folder. To share them with Quill on your Mac, choose its library in iCloud Drive: Documents › Quill.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

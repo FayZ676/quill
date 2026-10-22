@@ -1,5 +1,6 @@
 import CoreText
 import Foundation
+import SwiftUI
 #if os(macOS)
 import AppKit
 #else
@@ -9,6 +10,48 @@ import UIKit
 enum EditorFont: String, CaseIterable, Identifiable {
     case mono = "Mono", duo = "Duo", quattro = "Quattro"
     var id: String { rawValue }
+}
+
+extension Font {
+    /// One face of the chosen editor font, for the app's own text. Fixed at `size` unless
+    /// `style` is given, in which case it scales with Dynamic Type like that style. SwiftUI
+    /// falls back to the system font when the bundled fonts aren't registered.
+    static func quill(_ choice: EditorFont, size: CGFloat, bold: Bool = false,
+                      relativeTo style: Font.TextStyle? = nil) -> Font {
+        let name = "iAWriter\(choice.rawValue)S-\(bold ? "Bold" : "Regular")"
+        if let style { return .custom(name, size: size, relativeTo: style) }
+        return .custom(name, fixedSize: size)
+    }
+}
+
+private struct EditorFontKey: EnvironmentKey {
+    static let defaultValue = EditorFont.duo
+}
+
+extension EnvironmentValues {
+    /// The chosen editor font, so the app's own text can follow it; set once at the root.
+    var editorFont: EditorFont {
+        get { self[EditorFontKey.self] }
+        set { self[EditorFontKey.self] = newValue }
+    }
+}
+
+/// Sets text in the chosen editor font, so labels and bars match the page.
+private struct AppFont: ViewModifier {
+    @Environment(\.editorFont) private var choice
+    let size: CGFloat
+    let bold: Bool
+    let style: Font.TextStyle?
+
+    func body(content: Content) -> some View {
+        content.font(.quill(choice, size: size, bold: bold, relativeTo: style))
+    }
+}
+
+extension View {
+    func appFont(_ size: CGFloat, bold: Bool = false, relativeTo style: Font.TextStyle? = nil) -> some View {
+        modifier(AppFont(size: size, bold: bold, style: style))
+    }
 }
 
 enum Fonts {
