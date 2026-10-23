@@ -25,6 +25,8 @@ final class AppState: ObservableObject {
 
     @Published private(set) var root: URL
     @Published private(set) var tree: [FileNode] = []
+    /// The library's first scan hasn't landed yet.
+    @Published private(set) var loading = true
     /// iCloud files still on their way down; the library refreshes until they've all arrived.
     @Published private(set) var downloading = 0
     /// Files iCloud hasn't brought to the device yet.
@@ -63,6 +65,10 @@ final class AppState: ObservableObject {
     /// The picked folder, kept open for the life of the app (iOS sandbox access).
     private var scopedRoot: URL?
     private var recheck: DispatchWorkItem?
+    private static let scanQueue = DispatchQueue(label: "Quill.scan", qos: .userInitiated)
+    private var scanning = false
+    /// Another scan was asked for while one ran.
+    private var rescan = false
     /// Counts graph builds, so a slow one can't land after a newer one.
     private var graphBuild = 0
 
@@ -100,37 +106,79 @@ final class AppState: ObservableObject {
 
     // MARK: Library
 
+    /// Rescans the library in the background; the tree and everything built from it update
+    /// when the scan lands. A large library (an Obsidian vault, say) takes a while to walk,
+    /// so this never holds up the screen.
     func reloadTree() {
-        var placeholders = 0
-        let fresh = FileNode.scan(root, placeholders: &placeholders)
-        if fresh != tree || links.root != root {
-            links = LinkResolver(fresh, root: root)
-            tree = fresh
-            var map: [URL: [FileNode]] = [root: fresh]
-            func index(_ nodes: [FileNode]) {
-                for node in nodes where node.isDirectory {
-                    map[node.url] = node.children ?? []
-                    index(node.children ?? [])
-                }
-            }
-            index(fresh)
-            children = map
-        }
-        if downloading != placeholders { downloading = placeholders }
         // Screens for things deleted elsewhere go away.
         if let gone = pages.firstIndex(where: { !FileManager.default.fileExists(atPath: $0.url.path) }) {
             pages.removeSubrange(gone...)
         }
-        let states = SyncState.of(tree)
-        if states != syncStates { syncStates = states }
-
         recheck?.cancel()
-        if placeholders > 0 || states.values.contains(.downloading) {
+        // One scan at a time; asks made during one get a single scan after it.
+        guard !scanning else { return rescan = true }
+        scanning = true
+        let root = root, tree = tree, links = links
+        Self.scanQueue.async {
+            var placeholders = 0
+            let fresh = FileNode.scan(root, placeholders: &placeholders)
+            let changed = fresh != tree || links.root != root
+            let scan = Scan(root: root, tree: fresh, changed: changed,
+                            links: changed ? LinkResolver(fresh, root: root) : links,
+                            children: changed ? Self.index(fresh, root: root) : [:],
+                            placeholders: placeholders, syncStates: SyncState.of(fresh))
+            DispatchQueue.main.async { [weak self] in self?.apply(scan) }
+        }
+    }
+
+    private struct Scan {
+        let root: URL
+        let tree: [FileNode]
+        let changed: Bool
+        let links: LinkResolver
+        let children: [URL: [FileNode]]
+        let placeholders: Int
+        let syncStates: [URL: SyncState]
+    }
+
+    private func apply(_ scan: Scan) {
+        scanning = false
+        // The library changed under the scan: it's out of date.
+        guard scan.root == root else { return reloadTree() }
+        if scan.changed {
+            links = scan.links
+            tree = scan.tree
+            children = scan.children
+        }
+        if loading {
+            loading = false
+            announceLibrary()
+        }
+        if downloading != scan.placeholders { downloading = scan.placeholders }
+        if scan.syncStates != syncStates { syncStates = scan.syncStates }
+
+        if rescan {
+            rescan = false
+            reloadTree()
+        } else if scan.placeholders > 0 || scan.syncStates.values.contains(.downloading) {
             let work = DispatchWorkItem { [weak self] in self?.reloadTree() }
             recheck = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
         rebuildGraph()
+    }
+
+    /// Each folder's contents, by its URL.
+    private static func index(_ tree: [FileNode], root: URL) -> [URL: [FileNode]] {
+        var map: [URL: [FileNode]] = [root: tree]
+        func index(_ nodes: [FileNode]) {
+            for node in nodes where node.isDirectory {
+                map[node.url] = node.children ?? []
+                index(node.children ?? [])
+            }
+        }
+        index(tree)
+        return map
     }
 
     func showGraph() {
@@ -177,6 +225,7 @@ final class AppState: ObservableObject {
         scopedRoot = nil
         defaults.removeObject(forKey: "rootBookmark")
         root = Self.localLibrary
+        loading = true
         let fm = FileManager.default
         if (try? fm.contentsOfDirectory(atPath: root.path))?.isEmpty ?? true {
             try? Self.welcomeText.write(to: root.appendingPathComponent("Welcome.md"), atomically: true, encoding: .utf8)
@@ -309,8 +358,13 @@ final class AppState: ObservableObject {
         reloadTree()
     }
 
-    /// Has the file provider look over the whole library for changes it missed.
-    func announceLibrary() {
+    /// Has the file provider look over the whole library for changes it missed. Once per
+    /// library: only Quill 1.0.0 wrote without telling it, and announcing a vault of
+    /// thousands of notes on every return to the app crowds out opening them.
+    private func announceLibrary() {
+        var announced = Set(defaults.stringArray(forKey: "announcedLibraries") ?? [])
+        guard announced.insert(root.path).inserted else { return }
+        defaults.set(Array(announced), forKey: "announcedLibraries")
         func urls(_ nodes: [FileNode]) -> [URL] { nodes.flatMap { [$0.url] + urls($0.children ?? []) } }
         let all = urls(tree)
         DispatchQueue.global(qos: .utility).async { Coordinated.announce(all) }
@@ -325,6 +379,7 @@ final class AppState: ObservableObject {
     private func open(_ url: URL) {
         scopedRoot = url
         root = URL(fileURLWithPath: url.path, isDirectory: true)
+        loading = true
         pages = []
         reloadTree()
     }

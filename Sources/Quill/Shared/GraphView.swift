@@ -35,8 +35,8 @@ struct GraphView: View {
         GeometryReader { geometry in
             let size = geometry.size
             let view = transform(in: size)
-            Canvas { context, _ in
-                draw(in: context, view)
+            Canvas { context, size in
+                draw(in: context, size, view)
             }
             .contentShape(Rectangle())
             .gesture(dragGesture(size))
@@ -103,12 +103,22 @@ struct GraphView: View {
         return Transform(center: CGPoint(x: middle.x - bounds.midX * fit, y: middle.y - bounds.midY * fit), scale: fit)
     }
 
-    private func draw(in context: GraphicsContext, _ view: Transform) {
+    /// How a dot is filled. Dots are gathered into one path per look rather than filled one
+    /// by one: a big library has thousands.
+    private struct Dot: Hashable {
+        enum Tint { case accent, text, quiet }
+        let tint: Tint
+        let dim: Bool
+    }
+
+    private func draw(in context: GraphicsContext, _ size: CGSize, _ view: Transform) {
         let points = sim.points
         guard points.count == sim.names.count else { return }
         let focus = hovered.map { sim.neighbors[$0].union([$0]) }
         let accent = Color(platform: Theme.accent)
         let quiet = Color(platform: Theme.markup)
+        // What's on screen, with room for labels that hang over the edge.
+        let visible = CGRect(origin: .zero, size: size).insetBy(dx: -80, dy: -40)
 
         var faint = Path(), lit = Path()
         for link in sim.links {
@@ -125,21 +135,37 @@ struct GraphView: View {
         // Labels come in as you zoom closer, as in Obsidian; the hovered note and its
         // neighbors always have theirs.
         let labelOpacity = min(1, max(0, (view.scale - 0.55) / 0.35))
+        var dots: [Dot: Path] = [:]
+        var labels: [(text: Text, at: CGPoint)] = []
         for i in points.indices {
             let p = view.screen(points[i])
+            guard visible.contains(p) else { continue }
             let r = radius(i, view)
             let inFocus = focus?.contains(i) ?? true
-            let color: Color = i == hovered || sim.urls[i] == current ? accent
-                : focus != nil && inFocus ? Color(platform: Theme.text) : quiet
-            context.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)),
-                         with: .color(color.opacity(inFocus ? 1 : 0.3)))
+            let tint: Dot.Tint = i == hovered || sim.urls[i] == current ? .accent
+                : focus != nil && inFocus ? .text : .quiet
+            dots[Dot(tint: tint, dim: !inFocus), default: Path()]
+                .addEllipse(in: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
 
             let opacity = focus != nil ? (inFocus ? 1 : labelOpacity * 0.3) : labelOpacity
             guard opacity > 0 else { continue }
             let label = Text(sim.names[i])
                 .font(.quill(font, size: 11))
                 .foregroundColor(Color(platform: Theme.text).opacity(opacity * (inFocus && focus != nil ? 1 : 0.75)))
-            context.draw(label, at: CGPoint(x: p.x, y: p.y + r + 4), anchor: .top)
+            labels.append((label, CGPoint(x: p.x, y: p.y + r + 4)))
+        }
+        for (dot, path) in dots {
+            let color: Color
+            switch dot.tint {
+            case .accent: color = accent
+            case .text: color = Color(platform: Theme.text)
+            case .quiet: color = quiet
+            }
+            context.fill(path, with: .color(color.opacity(dot.dim ? 0.3 : 1)))
+        }
+        // Over the dots, as before, where one would otherwise hide a neighbor's name.
+        for label in labels {
+            context.draw(label.text, at: label.at, anchor: .top)
         }
     }
 
@@ -307,15 +333,11 @@ final class GraphSimulation: ObservableObject {
             return
         }
         let n = points.count
+        let tree = Quadtree(points)
+        var stack: [Int] = []
         for i in 0..<n {
-            for j in (i + 1)..<n {
-                var dx = points[i].x - points[j].x, dy = points[i].y - points[j].y
-                if dx == 0 && dy == 0 { dx = CGFloat.random(in: -0.5...0.5); dy = CGFloat.random(in: -0.5...0.5) }
-                let d2 = max(dx * dx + dy * dy, 25)
-                let f = Self.charge * alpha / d2
-                velocities[i].dx += dx * f; velocities[i].dy += dy * f
-                velocities[j].dx -= dx * f; velocities[j].dy -= dy * f
-            }
+            let push = tree.push(on: i, strength: Self.charge * alpha, stack: &stack)
+            velocities[i].dx += push.dx; velocities[i].dy += push.dy
         }
         for link in links {
             let dx = points[link.b].x - points[link.a].x, dy = points[link.b].y - points[link.a].y
@@ -337,6 +359,104 @@ final class GraphSimulation: ObservableObject {
             velocities[pinned.index] = .zero
         }
         frame &+= 1
+    }
+}
+
+/// The points of a graph in nested squares, so a far-off cluster can push as one body
+/// rather than note by note (Barnes–Hut, as d3-force does). That takes each step of the
+/// layout from n² pushes to about n log n, which a library of thousands of notes needs.
+private struct Quadtree {
+    private struct Cell {
+        /// Where its points' mass sits, and how many there are.
+        var center: CGPoint
+        var mass: CGFloat
+        /// The side of its square.
+        var size: CGFloat
+        /// A leaf's points in `members`, or a branch's cells in `branches`.
+        var start = 0, count = 0
+        var isLeaf = true
+    }
+
+    /// How far a cell must be, for its size, to push as one body.
+    private static let theta2: CGFloat = 0.81
+    /// Points closer than this push no harder, so ones on top of each other don't fly apart.
+    private static let nearest2: CGFloat = 25
+
+    private let points: [CGPoint]
+    private var cells: [Cell] = []
+    private var branches: [Int] = []
+    private var members: [Int] = []
+
+    init(_ points: [CGPoint]) {
+        self.points = points
+        guard let first = points.first else { return }
+        var lo = first, hi = first
+        for p in points {
+            lo = CGPoint(x: min(lo.x, p.x), y: min(lo.y, p.y))
+            hi = CGPoint(x: max(hi.x, p.x), y: max(hi.y, p.y))
+        }
+        _ = build(Array(points.indices), at: lo, size: max(hi.x - lo.x, hi.y - lo.y) + 1, depth: 0)
+    }
+
+    private mutating func build(_ indices: [Int], at origin: CGPoint, size: CGFloat, depth: Int) -> Int {
+        var sum = CGPoint.zero
+        for i in indices { sum.x += points[i].x; sum.y += points[i].y }
+        let mass = CGFloat(indices.count)
+        let cell = cells.count
+        cells.append(Cell(center: CGPoint(x: sum.x / mass, y: sum.y / mass), mass: mass, size: size))
+        // Points that never come apart (on top of each other) share a leaf.
+        guard indices.count > 1, depth < 16 else {
+            cells[cell].start = members.count
+            cells[cell].count = indices.count
+            members += indices
+            return cell
+        }
+        let half = size / 2
+        var quarters: [[Int]] = [[], [], [], []]
+        for i in indices {
+            quarters[(points[i].x >= origin.x + half ? 1 : 0) + (points[i].y >= origin.y + half ? 2 : 0)].append(i)
+        }
+        var children: [Int] = []
+        for (q, quarter) in quarters.enumerated() where !quarter.isEmpty {
+            let corner = CGPoint(x: origin.x + (q & 1 == 0 ? 0 : half), y: origin.y + (q & 2 == 0 ? 0 : half))
+            children.append(build(quarter, at: corner, size: half, depth: depth + 1))
+        }
+        cells[cell].isLeaf = false
+        cells[cell].start = branches.count
+        cells[cell].count = children.count
+        branches += children
+        return cell
+    }
+
+    /// The push on point `i` from all the others, each falling off with the square of its
+    /// distance. `stack` is scratch space, kept between calls to save allocating it.
+    func push(on i: Int, strength: CGFloat, stack: inout [Int]) -> CGVector {
+        guard !cells.isEmpty else { return .zero }
+        let p = points[i]
+        var push = CGVector.zero
+        stack.removeAll(keepingCapacity: true)
+        stack.append(0)
+        while let c = stack.popLast() {
+            let cell = cells[c]
+            if cell.isLeaf {
+                for j in members[cell.start..<cell.start + cell.count] where j != i {
+                    var dx = p.x - points[j].x, dy = p.y - points[j].y
+                    if dx == 0 && dy == 0 { dx = CGFloat.random(in: -0.5...0.5); dy = CGFloat.random(in: -0.5...0.5) }
+                    let f = strength / max(dx * dx + dy * dy, Self.nearest2)
+                    push.dx += dx * f; push.dy += dy * f
+                }
+                continue
+            }
+            let dx = p.x - cell.center.x, dy = p.y - cell.center.y
+            let d2 = dx * dx + dy * dy
+            if cell.size * cell.size < Self.theta2 * d2 {
+                let f = strength * cell.mass / max(d2, Self.nearest2)
+                push.dx += dx * f; push.dy += dy * f
+            } else {
+                stack.append(contentsOf: branches[cell.start..<cell.start + cell.count])
+            }
+        }
+        return push
     }
 }
 

@@ -10,12 +10,9 @@ struct ContentView: View {
             FolderView(url: state.root, isLibrary: true)
                 .navigationDestination(for: Page.self) { PageView(page: $0) }
         }
-        // onChange misses the first activation at launch.
-        .task { state.announceLibrary() }
         .onChange(of: phase) { _, phase in
             if phase == .active {
                 state.reloadTree()
-                state.announceLibrary()
             } else {
                 state.flushSave()
             }
@@ -109,7 +106,7 @@ private struct FolderView: View {
         // Back from the editor, the file just opened has downloaded.
         .onAppear { state.reloadTree() }
         .overlay {
-            if nodes.isEmpty {
+            if nodes.isEmpty && !state.loading {
                 // Their text set here: the view's own fonts would win over inherited ones.
                 if state.downloading > 0 && isLibrary {
                     ContentUnavailableView {
