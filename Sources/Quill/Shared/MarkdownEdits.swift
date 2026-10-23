@@ -14,7 +14,8 @@ enum MarkdownEdits {
     private static let listPrefix = try! NSRegularExpression(
         pattern: #"^([ \t]*)(?:([-*+])|(\d+)([.)]))[ \t]+(\[[ xX]\][ \t]+)?|^([ \t]*>[ \t]?)"#)
     private static let headingPrefix = try! NSRegularExpression(pattern: #"^#{1,6}[ \t]+"#)
-    private static let bulletPrefix = try! NSRegularExpression(pattern: #"^[ \t]*[-*+][ \t]+"#)
+    private static let itemPrefix = try! NSRegularExpression(
+        pattern: #"^[ \t]*(?:[-*+]|(\d+)[.)])[ \t]+(?:\[([ xX])\][ \t]+)?"#)
 
     /// Return inside a list or quote: continues it, or ends it on an empty item.
     /// Nil means an ordinary newline.
@@ -159,13 +160,75 @@ enum MarkdownEdits {
         return replacingPrefix(old, with: new, at: lineRange.location, selection: sel)
     }
 
-    /// Turns the caret's line into a bullet, or back into plain text.
-    static func toggleBullet(in string: String, selection sel: NSRange) -> TextEdit {
+    /// Turns the caret's line into a bulleted or numbered item, switches it between the
+    /// two, or turns it back into plain text. A numbered item follows on from the one above.
+    static func toggleList(ordered: Bool, in string: String, selection sel: NSRange) -> TextEdit {
         let ns = string as NSString
         let (lineRange, line) = self.line(in: ns, at: sel.location)
-        let existing = bulletPrefix.firstMatch(in: line as String, range: NSRange(location: 0, length: line.length))
+        let existing = itemPrefix.firstMatch(in: line as String, range: NSRange(location: 0, length: line.length))
         let old = existing.map { line.substring(with: $0.range) } ?? ""
-        return replacingPrefix(old, with: old.isEmpty ? "- " : "", at: lineRange.location, selection: sel)
+        // The same kind of item turns back into text; anything else (a task too) switches.
+        if let existing, (existing.range(at: 1).location != NSNotFound) == ordered,
+           existing.range(at: 2).location == NSNotFound {
+            return replacingPrefix(old, with: "", at: lineRange.location, selection: sel)
+        }
+        let indent = String(old.prefix { $0 == " " || $0 == "\t" })
+        var new = indent + "- "
+        if ordered {
+            var number = 1
+            if lineRange.location > 0 {
+                let above = self.line(in: ns, at: lineRange.location - 1).text
+                if let m = itemPrefix.firstMatch(in: above as String, range: NSRange(location: 0, length: above.length)),
+                   m.range(at: 1).location != NSNotFound {
+                    number = (Int(above.substring(with: m.range(at: 1))) ?? 0) + 1
+                }
+            }
+            new = indent + "\(number). "
+        }
+        return replacingPrefix(old, with: new, at: lineRange.location, selection: sel)
+    }
+
+    /// Makes the caret's line a task, or ticks and unticks one that already is.
+    static func toggleTask(in string: String, selection sel: NSRange) -> TextEdit {
+        let ns = string as NSString
+        let (lineRange, line) = self.line(in: ns, at: sel.location)
+        let existing = itemPrefix.firstMatch(in: line as String, range: NSRange(location: 0, length: line.length))
+        if let existing, existing.range(at: 2).location != NSNotFound {
+            let box = existing.range(at: 2)
+            let ticked = line.substring(with: box) != " "
+            return TextEdit(range: NSRange(location: lineRange.location + box.location, length: 1),
+                            text: ticked ? " " : "x", selection: sel)
+        }
+        let old = existing.map { line.substring(with: $0.range) } ?? ""
+        let indent = String(old.prefix { $0 == " " || $0 == "\t" })
+        return replacingPrefix(old, with: indent + "- [ ] ", at: lineRange.location, selection: sel)
+    }
+
+    /// Ticks or unticks the task whose box is `box`, leaving the selection where it is.
+    static func tick(_ box: NSRange, in string: String, selection sel: NSRange) -> TextEdit {
+        let inside = NSRange(location: box.location + 1, length: 1)
+        let ticked = (string as NSString).substring(with: inside) != " "
+        return TextEdit(range: inside, text: ticked ? " " : "x", selection: sel)
+    }
+
+    /// Puts a divider (`---`) on a line of its own below the caret's line, with a blank line
+    /// above it so it isn't read as underlining that line into a heading.
+    static func divider(in string: String, selection sel: NSRange) -> TextEdit {
+        let ns = string as NSString
+        let (lineRange, line) = self.line(in: ns, at: sel.location)
+        func blank(_ s: NSString) -> Bool { s.trimmingCharacters(in: .whitespaces).isEmpty }
+        let range: NSRange
+        let text: String
+        if blank(line) {
+            let above = lineRange.location > 0 ? self.line(in: ns, at: lineRange.location - 1).text : ""
+            range = lineRange
+            text = (blank(above) ? "" : "\n") + "---\n"
+        } else {
+            range = NSRange(location: NSMaxRange(lineRange), length: 0)
+            text = "\n\n---\n"
+        }
+        return TextEdit(range: range, text: text,
+                        selection: NSRange(location: range.location + (text as NSString).length, length: 0))
     }
 
     /// Swaps a line's leading marker, keeping the caret on the same text.

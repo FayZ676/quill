@@ -23,10 +23,12 @@ final class FocusTextView: UITextView {
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         inputAccessoryView = makeKeyBar()
+        // One tap for both, so neither waits on the other: it ticks a task's box or opens a link.
         let tap = UITapGestureRecognizer(target: self, action: #selector(tappedLink))
         linkTapDelegate.isOnLink = { [weak self, weak tap] in
             guard let self, let tap else { return false }
-            return self.noteLink(at: tap.location(in: self)) != nil
+            let point = tap.location(in: self)
+            return self.taskBox(at: point) != nil || self.noteLink(at: point) != nil
         }
         tap.delegate = linkTapDelegate
         addGestureRecognizer(tap)
@@ -123,6 +125,7 @@ final class FocusTextView: UITextView {
     /// even to colors alone, would wipe iOS's spelling marks.
     func updateFocus(force: Bool = false) {
         guard let manager = layoutManager as? FocusLayoutManager else { return }
+        manager.reveal(around: selectedRange)
         let focus = focusEnabled && textStorage.length > 0 ? focusRange() : nil
         guard force || focus != litFocus else { return }
         litFocus = focus
@@ -183,13 +186,26 @@ final class FocusTextView: UITextView {
         delegate?.textViewDidChange?(self)
     }
 
+    // MARK: Tasks
+
+    /// The task box under `point` (in this view's coordinates), if any.
+    private func taskBox(at point: CGPoint) -> NSRange? {
+        guard let manager = layoutManager as? MarkdownLayoutManager else { return nil }
+        return manager.taskBox(at: CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top),
+                               in: textContainer)
+    }
+
+
     @objc func bold() { apply(MarkdownEdits.toggleWrap("**", in: text, selection: selectedRange)) }
     @objc func italic() { apply(MarkdownEdits.toggleWrap("_", in: text, selection: selectedRange)) }
     @objc func strikethrough() { apply(MarkdownEdits.toggleWrap("~~", in: text, selection: selectedRange)) }
     @objc func inlineCode() { apply(MarkdownEdits.toggleWrap("`", in: text, selection: selectedRange)) }
     @objc func link() { apply(MarkdownEdits.link(in: text, selection: selectedRange)) }
     @objc func heading() { apply(MarkdownEdits.cycleHeading(in: text, selection: selectedRange)) }
-    @objc func bullet() { apply(MarkdownEdits.toggleBullet(in: text, selection: selectedRange)) }
+    @objc func bullet() { apply(MarkdownEdits.toggleList(ordered: false, in: text, selection: selectedRange)) }
+    @objc func task() { apply(MarkdownEdits.toggleTask(in: text, selection: selectedRange)) }
+    @objc func divider() { apply(MarkdownEdits.divider(in: text, selection: selectedRange)) }
+    @objc func numbered() { apply(MarkdownEdits.toggleList(ordered: true, in: text, selection: selectedRange)) }
     @objc private func toggleFocus() { AppState.shared.focusEnabled.toggle() }
     @objc private func toggleTypewriter() { AppState.shared.typewriter.toggle() }
 
@@ -238,19 +254,35 @@ final class FocusTextView: UITextView {
             b.widthAnchor.constraint(equalToConstant: 40).isActive = true
             return b
         }
+        // More than fit across a phone, so the formatting buttons scroll; Hide Keyboard stays put.
+        // The everyday ones come first, to fit before the edge; the rarer ones scroll in.
         let stack = UIStackView(arrangedSubviews: [
             button("number", "Heading", #selector(heading)),
             button("bold", "Bold", #selector(bold)),
             button("italic", "Italic", #selector(italic)),
-            button("list.bullet", "List", #selector(bullet)),
             button("link", "Link", #selector(link)),
+            button("list.bullet", "Bulleted List", #selector(bullet)),
+            button("list.number", "Numbered List", #selector(numbered)),
+            button("checklist", "Task", #selector(task)),
             button("chevron.left.forwardslash.chevron.right", "Code", #selector(inlineCode)),
-            UIView(),
-            button("keyboard.chevron.compact.down", "Hide Keyboard", #selector(resignFirstResponder)),
+            button("strikethrough", "Strikethrough", #selector(strikethrough)),
+            button("minus", "Divider", #selector(divider)),
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
-        bar.addSubview(stack)
-        shortcutRow = stack
+        let scroll = FadingScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.alwaysBounceHorizontal = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(stack)
+        bar.addSubview(scroll)
+        let hide = button("keyboard.chevron.compact.down", "Hide Keyboard", #selector(resignFirstResponder))
+        hide.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(hide)
+        let divider = UIView()
+        divider.backgroundColor = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(divider)
+        shortcutRow = scroll
 
         // In the shortcuts' place while a `[[link]]` is typed: the notes it could be.
         suggestionRow.axis = .horizontal
@@ -267,7 +299,7 @@ final class FocusTextView: UITextView {
             suggestionBar.topAnchor.constraint(equalTo: bar.topAnchor),
             suggestionBar.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             suggestionBar.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 6),
-            suggestionBar.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
+            suggestionBar.trailingAnchor.constraint(equalTo: hide.leadingAnchor, constant: -6),
             suggestionRow.topAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.topAnchor),
             suggestionRow.bottomAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.bottomAnchor),
             suggestionRow.leadingAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.leadingAnchor),
@@ -277,10 +309,22 @@ final class FocusTextView: UITextView {
             rule.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
             rule.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
             rule.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
-            stack.topAnchor.constraint(equalTo: bar.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
+            scroll.topAnchor.constraint(equalTo: bar.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: hide.leadingAnchor),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -6),
+            stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            hide.topAnchor.constraint(equalTo: bar.topAnchor),
+            hide.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
+            hide.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
+            divider.trailingAnchor.constraint(equalTo: hide.leadingAnchor),
+            divider.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            divider.widthAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+            divider.heightAnchor.constraint(equalToConstant: 20),
         ])
         return bar
     }
@@ -300,7 +344,11 @@ final class FocusTextView: UITextView {
     var isSuggesting: Bool { suggester.isShowing }
 
     /// Taps on a link open it, as in Obsidian; taps anywhere else place the caret as usual.
+    /// A tap on a task's box ticks it, without moving the caret or raising the keyboard.
     @objc private func tappedLink(_ tap: UITapGestureRecognizer) {
+        if let box = taskBox(at: tap.location(in: self)) {
+            return apply(MarkdownEdits.tick(box, in: text, selection: selectedRange))
+        }
         if let target = noteLink(at: tap.location(in: self)) { openNoteLink?(target) }
     }
 
@@ -382,7 +430,7 @@ final class FocusTextView: UITextView {
     }
 }
 
-/// Lets the link tap go first, and only on a link: the text view's own taps wait to see
+/// Lets the link tap go first, and only on a link or a task's box: the text view's own taps wait to see
 /// whether it was one before placing the caret.
 private final class LinkTapDelegate: NSObject, UIGestureRecognizerDelegate {
     var isOnLink: () -> Bool = { false }
@@ -397,7 +445,7 @@ private final class LinkTapDelegate: NSObject, UIGestureRecognizerDelegate {
 
 /// Draws the text outside `focus` in the dimmed gray, as the Mac app does with temporary
 /// attributes, which TextKit on iOS doesn't have.
-final class FocusLayoutManager: NSLayoutManager {
+final class FocusLayoutManager: MarkdownLayoutManager {
     /// The characters drawn in their own colors; nil draws everything that way.
     var focus: NSRange?
     private var dimming = false
@@ -416,6 +464,11 @@ final class FocusLayoutManager: NSLayoutManager {
         dimming = false
     }
 
+    override func ruleColor(at index: Int) -> UIColor {
+        guard let focus, !NSLocationInRange(index, focus) else { return super.ruleColor(at: index) }
+        return Theme.dimmed
+    }
+
     override func showCGGlyphs(_ glyphs: UnsafePointer<CGGlyph>, positions: UnsafePointer<CGPoint>, count glyphCount: Int,
                                font: UIFont, textMatrix: CGAffineTransform,
                                attributes: [NSAttributedString.Key: Any] = [:], in context: CGContext) {
@@ -426,6 +479,38 @@ final class FocusLayoutManager: NSLayoutManager {
         }
         super.showCGGlyphs(glyphs, positions: positions, count: glyphCount, font: font, textMatrix: textMatrix,
                            attributes: attributes, in: context)
+    }
+}
+
+/// A horizontal scroller whose edges fade out wherever there's more to scroll to, so a
+/// clipped button reads as "swipe for more" rather than a mistake.
+private final class FadingScrollView: UIScrollView {
+    private static let fade: CGFloat = 28
+    private let gradient = CAGradientLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        gradient.startPoint = CGPoint(x: 0, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1, y: 0.5)
+        gradient.colors = [UIColor.clear, .black, .black, .clear].map(\.cgColor)
+        layer.mask = gradient
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // Runs on every scroll step too, so the fades follow the position.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = bounds.width
+        guard width > 0 else { return }
+        let more = contentSize.width - width
+        let left = contentOffset.x > 1 ? Self.fade / width : 0
+        let right = contentOffset.x < more - 1 ? Self.fade / width : 0
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradient.frame = bounds  // In scrolled coordinates, so it stays on screen.
+        gradient.locations = [0, left, 1 - right, 1].map { NSNumber(value: Double($0)) }
+        CATransaction.commit()
     }
 }
 

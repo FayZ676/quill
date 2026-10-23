@@ -9,7 +9,7 @@ struct EditorView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         // Explicit TextKit 1 stack: focus dimming relies on layout-manager temporary attributes.
         let storage = NSTextStorage()
-        let layout = NSLayoutManager()
+        let layout = MarkdownLayoutManager()
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 600, height: CGFloat.greatestFiniteMagnitude))
         container.widthTracksTextView = false
