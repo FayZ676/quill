@@ -62,7 +62,7 @@ final class FocusTextView: UITextView {
     /// Puts the caret where the selection is, or hides it when there's a selection or no focus.
     func updateCaret() {
         hideSystemCaret()
-        guard isFirstResponder, selectedRange.length == 0, let end = selectedTextRange?.end else {
+        guard isFirstResponder, !floatingCursor, selectedRange.length == 0, let end = selectedTextRange?.end else {
             return caretView.hide()
         }
         var caret = caretRect(for: end)
@@ -71,6 +71,22 @@ final class FocusTextView: UITextView {
         caret.size.height = min(caret.height, fonts.regular.lineHeight)
         if caretView.superview == nil { addSubview(caretView) }
         caretView.show(at: caret)
+    }
+
+    /// While the space bar is held to move the caret, iOS draws a floating cursor of its own;
+    /// this one stays out of the way until the finger lifts, so there's only ever one.
+    private var floatingCursor = false
+
+    override func beginFloatingCursor(at point: CGPoint) {
+        floatingCursor = true
+        caretView.hide()
+        super.beginFloatingCursor(at: point)
+    }
+
+    override func endFloatingCursor() {
+        super.endFloatingCursor()
+        floatingCursor = false
+        updateCaret()
     }
 
     @discardableResult

@@ -84,10 +84,13 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private static let underline = re(#"^[ \t]{0,3}(?:=+|-{2,})[ \t]*$"#, .anchorsMatchLines)
     private static let taskBox = re(#"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(\[[ xX]\])[ \t]"#, .anchorsMatchLines)
     private static let checkedTask = re(#"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[xX]\][ \t]+(.*)$"#, .anchorsMatchLines)
-    private static let rule = re(#"^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$"#, .anchorsMatchLines)
+    // Not `****`, though: that's Bold pressed with nothing selected, waiting for its text.
+    private static let rule = re(#"^[ \t]{0,3}(?!\*{4}[ \t]*$)([-*_])(?:[ \t]*\1){2,}[ \t]*$"#, .anchorsMatchLines)
     private static let fence = re(#"^[ \t]{0,3}(?:```|~~~).*$"#, .anchorsMatchLines)
     private static let bold = re(#"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"#)
-    private static let italic = re(#"(?<![*_\w])([*_])(?=[^\s*_])(.+?)(?<=[^\s*_])\1(?![*_\w])"#)
+    // Each marker may touch the other kind, so bold and italic nest: `**_both_**`, `_**both**_`.
+    private static let italic = re(#"(?<![*\w])(\*)(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])|(?<!\w)(_)(?=[^\s_])(.+?)(?<=[^\s_])_(?!\w)"#)
+    private static let boldItalic = re(#"(?<![*_\w])(\*\*\*|___)(?=[^\s*_])(.+?)(?<=[^\s*_])\1(?![*_\w])"#)
     private static let strike = re(#"(~~)(?=\S)(.+?)(?<=\S)~~"#)
     private static let code = re(#"`[^`\n]+`"#)
     private static let link = re(#"!?\[([^\]\n]*)\]\([^)\n]*\)"#)
@@ -147,7 +150,14 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             dimMarkers(m, dim)
         }
         each(Self.italic) { m in
-            addTraits(ts, m.range(at: 2), italic: true)
+            // Whichever of the two alternatives matched: `*` in groups 1–2, `_` in 3–4.
+            let text = m.range(at: 2).location != NSNotFound ? m.range(at: 2) : m.range(at: 4)
+            addTraits(ts, text, italic: true)
+            dim(NSRange(location: m.range.location, length: 1))
+            dim(NSRange(location: NSMaxRange(m.range) - 1, length: 1))
+        }
+        each(Self.boldItalic) { m in
+            addTraits(ts, m.range(at: 2), bold: true, italic: true)
             dimMarkers(m, dim)
         }
         each(Self.strike) { m in
