@@ -10,6 +10,7 @@ struct EditorView: NSViewRepresentable {
         // Explicit TextKit 1 stack: focus dimming relies on layout-manager temporary attributes.
         let storage = NSTextStorage()
         let layout = NSLayoutManager()
+        layout.delegate = context.coordinator.markupHider
         storage.addLayoutManager(layout)
         let container = NSTextContainer(containerSize: NSSize(width: 600, height: CGFloat.greatestFiniteMagnitude))
         container.widthTracksTextView = false
@@ -73,6 +74,7 @@ final class PageScrollView: NSScrollView {
 final class EditorCoordinator: NSObject, NSTextViewDelegate {
     let state: AppState
     let highlighter = MarkdownHighlighter()
+    let markupHider = LinkMarkupHider()
     private weak var textView: FocusTextView?
     private var url: URL?
     private var dirty = false
@@ -230,6 +232,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView?.updateFocus()
         textView?.centerCaret()
         textView?.updateSuggestions()
+        if let tv = textView, let layout = tv.layoutManager { markupHider.reveal(at: tv.selectedRange(), in: layout) }
     }
 
     // MARK: Files

@@ -139,11 +139,19 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             let alias = m.range(at: 2)
             let shown = alias.location != NSNotFound && alias.length > 0 ? alias : m.range(at: 1)
             let written = linkExists?(target) ?? true
-            ts.addAttribute(.foregroundColor, value: written ? Theme.text : Theme.unwritten, range: shown)
+            ts.addAttribute(.foregroundColor, value: written ? Theme.link : Theme.unwritten, range: shown)
             ts.addAttribute(.noteLink, value: target, range: m.range)
+            // Everything around the shown text, for LinkMarkupHider to hide.
+            ts.addAttribute(.linkMarkup, value: true,
+                            range: NSRange(location: m.range.location, length: shown.location - m.range.location))
+            ts.addAttribute(.linkMarkup, value: true,
+                            range: NSRange(location: NSMaxRange(shown), length: NSMaxRange(m.range) - NSMaxRange(shown)))
         }
         each(Self.code) { m in
             ts.addAttributes(codeAttributes, range: m.range)
+            // A link written in code is only text.
+            ts.removeAttribute(.noteLink, range: m.range)
+            ts.removeAttribute(.linkMarkup, range: m.range)
             dim(NSRange(location: m.range.location, length: 1))
             dim(NSRange(location: NSMaxRange(m.range) - 1, length: 1))
         }
