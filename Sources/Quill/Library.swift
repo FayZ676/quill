@@ -10,6 +10,8 @@ final class AppState: ObservableObject {
 
     @Published private(set) var root: URL
     @Published private(set) var tree: [FileNode] = []
+    /// The library's first scan hasn't landed yet.
+    @Published private(set) var loading = true
     /// Files iCloud hasn't brought to this Mac yet.
     @Published private(set) var syncStates: [URL: SyncState] = [:]
     @Published var selection: URL? { didSet { if selection != oldValue { selectionChanged() } } }
@@ -51,6 +53,10 @@ final class AppState: ObservableObject {
     private var namingNewFile = false
     private var watcher: FolderWatcher?
     private var recheck: DispatchWorkItem?
+    private static let scanQueue = DispatchQueue(label: "Quill.scan", qos: .userInitiated)
+    private var scanning = false
+    /// Another scan was asked for while one ran.
+    private var rescan = false
     /// Counts graph builds, so a slow one can't land after a newer one.
     private var graphBuild = 0
 
@@ -88,22 +94,53 @@ final class AppState: ObservableObject {
 
     // MARK: Library
 
+    /// Rescans the library in the background; the tree and everything built from it update
+    /// when the scan lands. A large library (an Obsidian vault, say) takes a while to walk,
+    /// and the folder watcher asks for a scan on every save, so this never holds up typing.
     func reloadTree() {
-        let fresh = FileNode.scan(root)
-        if fresh != tree || links.root != root {
-            links = LinkResolver(fresh, root: root)
-            tree = fresh
-        }
         if let open = openFile, !FileManager.default.fileExists(atPath: open.path) {
             openFile = nil
         }
-        let states = SyncState.of(tree)
-        if states != syncStates { syncStates = states }
-
-        // A finished download doesn't always reach the folder watcher, so look again
-        // until every download has landed.
         recheck?.cancel()
-        if states.values.contains(.downloading) {
+        // One scan at a time; asks made during one get a single scan after it.
+        guard !scanning else { return rescan = true }
+        scanning = true
+        let root = root, tree = tree, links = links
+        Self.scanQueue.async {
+            let fresh = FileNode.scan(root)
+            let changed = fresh != tree || links.root != root
+            let scan = Scan(root: root, tree: fresh, changed: changed,
+                            links: changed ? LinkResolver(fresh, root: root) : links,
+                            syncStates: SyncState.of(fresh))
+            DispatchQueue.main.async { [weak self] in self?.apply(scan) }
+        }
+    }
+
+    private struct Scan {
+        let root: URL
+        let tree: [FileNode]
+        let changed: Bool
+        let links: LinkResolver
+        let syncStates: [URL: SyncState]
+    }
+
+    private func apply(_ scan: Scan) {
+        scanning = false
+        // The library changed under the scan: it's out of date.
+        guard scan.root == root else { return reloadTree() }
+        if scan.changed {
+            links = scan.links
+            tree = scan.tree
+        }
+        if loading { loading = false }
+        if scan.syncStates != syncStates { syncStates = scan.syncStates }
+
+        if rescan {
+            rescan = false
+            reloadTree()
+        } else if scan.syncStates.values.contains(.downloading) {
+            // A finished download doesn't always reach the folder watcher, so look again
+            // until every download has landed.
             let work = DispatchWorkItem { [weak self] in self?.reloadTree() }
             recheck = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
@@ -126,6 +163,7 @@ final class AppState: ObservableObject {
         flushSave()
         root = URL(fileURLWithPath: url.path, isDirectory: true)
         defaults.set(root.path, forKey: "root")
+        loading = true
         if let open = openFile, !isInside(open, root) {
             selection = nil
             openFile = nil

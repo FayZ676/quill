@@ -330,9 +330,13 @@ struct SidebarView: View {
             .onChange(of: state.renameTarget) { target in
                 if let target { withAnimation { proxy.scrollTo(target) } }
             }
+            // A new file or folder gets its row once the library's rescan lands.
+            .onChange(of: state.tree) { _ in
+                if let target = state.renameTarget { withAnimation { proxy.scrollTo(target) } }
+            }
         }
         .overlay {
-            if state.tree.isEmpty {
+            if state.tree.isEmpty && !state.loading {
                 Text("No documents").foregroundStyle(.secondary)
             }
         }
