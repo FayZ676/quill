@@ -8,8 +8,22 @@ import UIKit
 #endif
 
 enum EditorFont: String, CaseIterable, Identifiable {
-    case mono = "Mono", duo = "Duo", quattro = "Quattro"
+    case sans = "Sans", serif = "Serif", mono = "Mono"
     var id: String { rawValue }
+
+    /// The choice saved under `editorFont`; names from before there were three map to Sans.
+    init(saved: String?) {
+        self = saved.flatMap(EditorFont.init(rawValue:)) ?? .sans
+    }
+
+    /// The bundled iA Writer family, or nil for Serif, which uses the system serif.
+    var family: String? {
+        switch self {
+        case .sans: "iAWriterQuattroS"
+        case .serif: nil
+        case .mono: "iAWriterMonoS"
+        }
+    }
 }
 
 extension Font {
@@ -18,14 +32,19 @@ extension Font {
     /// falls back to the system font when the bundled fonts aren't registered.
     static func quill(_ choice: EditorFont, size: CGFloat, bold: Bool = false,
                       relativeTo style: Font.TextStyle? = nil) -> Font {
-        let name = "iAWriter\(choice.rawValue)S-\(bold ? "Bold" : "Regular")"
+        guard let family = choice.family else {
+            let weight: Font.Weight = bold ? .bold : .regular
+            if let style { return .system(style, design: .serif, weight: weight) }
+            return .system(size: size, weight: weight, design: .serif)
+        }
+        let name = "\(family)-\(bold ? "Bold" : "Regular")"
         if let style { return .custom(name, size: size, relativeTo: style) }
         return .custom(name, fixedSize: size)
     }
 }
 
 private struct EditorFontKey: EnvironmentKey {
-    static let defaultValue = EditorFont.duo
+    static let defaultValue = EditorFont.sans
 }
 
 extension EnvironmentValues {
@@ -68,29 +87,41 @@ enum Fonts {
     }
 }
 
-/// The four faces of one editor font at one size. Falls back to system fonts when the
-/// bundled iA fonts are unavailable (e.g. when run with `swift run`).
+/// The four faces of one editor font at one size. Serif is the system serif (New York);
+/// the others fall back to system fonts when the bundled iA fonts are unavailable (e.g.
+/// when run with `swift run`).
 struct FontSet {
     let regular, bold, italic, boldItalic: PlatformFont
     let size: CGFloat
 
     init(_ choice: EditorFont, size: CGFloat) {
-        let family = "iAWriter\(choice.rawValue)S"
-        if let r = PlatformFont(name: "\(family)-Regular", size: size) {
+        if let family = choice.family, let r = PlatformFont(name: "\(family)-Regular", size: size) {
             regular = r
             bold = PlatformFont(name: "\(family)-Bold", size: size) ?? r
             italic = PlatformFont(name: "\(family)-Italic", size: size) ?? r
             boldItalic = PlatformFont(name: "\(family)-BoldItalic", size: size) ?? bold
         } else {
-            let base = choice == .quattro
-                ? PlatformFont.systemFont(ofSize: size)
-                : PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            let base = switch choice {
+            case .sans: PlatformFont.systemFont(ofSize: size)
+            case .serif: Self.systemSerif(size)
+            case .mono: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            }
             regular = base
             bold = Self.withTraits(base, bold: true, italic: false)
             italic = Self.withTraits(base, bold: false, italic: true)
             boldItalic = Self.withTraits(base, bold: true, italic: true)
         }
         self.size = size
+    }
+
+    private static func systemSerif(_ size: CGFloat) -> PlatformFont {
+        let system = PlatformFont.systemFont(ofSize: size)
+        guard let descriptor = system.fontDescriptor.withDesign(.serif) else { return system }
+        #if os(macOS)
+        return PlatformFont(descriptor: descriptor, size: size) ?? system
+        #else
+        return PlatformFont(descriptor: descriptor, size: size)
+        #endif
     }
 
     private static func withTraits(_ font: PlatformFont, bold: Bool, italic: Bool) -> PlatformFont {

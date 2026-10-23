@@ -3,7 +3,7 @@ import UIKit
 /// The writing surface: a centered column, focus dimming, typewriter scrolling and
 /// Markdown-aware editing commands.
 final class FocusTextView: UITextView {
-    var fonts = FontSet(.duo, size: Fonts.defaultSize)
+    var fonts = FontSet(.sans, size: Fonts.defaultSize)
     weak var highlighter: MarkdownHighlighter?
     var focusEnabled = false
     var focusStyle: FocusStyle = .sentence

@@ -4,7 +4,7 @@ import SwiftUI
 /// The writing surface: a centered column with hanging heading marks, focus dimming,
 /// typewriter scrolling and Markdown-aware editing commands.
 final class FocusTextView: NSTextView {
-    var fonts = FontSet(.duo, size: Fonts.defaultSize)
+    var fonts = FontSet(.sans, size: Fonts.defaultSize)
     var focusEnabled = false
     var focusStyle: FocusStyle = .sentence
     var typewriter = false {
@@ -210,7 +210,7 @@ final class FocusTextView: NSTextView {
     /// The library's notes, for suggesting them as a link is typed.
     var linkResolver: () -> LinkResolver? = { nil }
     /// The font chosen for the page, for the suggestion list to match.
-    var editorFont = EditorFont.duo
+    var editorFont = EditorFont.sans
     private let suggester = LinkSuggester()
     /// Made the first time there are notes to suggest.
     private var suggestionView: NSHostingView<LinkSuggestionList>?

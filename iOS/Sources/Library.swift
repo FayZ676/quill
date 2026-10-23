@@ -83,7 +83,7 @@ final class AppState: ObservableObject {
         typewriter = defaults.bool(forKey: "typewriter")
         let size = defaults.double(forKey: "fontSize")
         fontSize = size > 0 ? size : Fonts.defaultSize
-        editorFont = EditorFont(rawValue: defaults.string(forKey: "editorFont") ?? "") ?? .duo
+        editorFont = EditorFont(saved: defaults.string(forKey: "editorFont"))
         textInput = TextInput.load(defaults)
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         choosingLibrary = !defaults.bool(forKey: "libraryChosen")

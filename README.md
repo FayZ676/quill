@@ -23,4 +23,4 @@ On first launch, choose the Mac library in iCloud Drive (Documents › Quill) to
 - `Sources/Quill/MarkdownHighlighter.swift`: inline Markdown styling
 - `Sources/Quill/Shared`: shared by both apps: Markdown highlighting, editing commands, fonts, the file model
 - `iOS/Sources`: the iOS app (library screens, editor, settings); `iOS/project.yml` is the Xcode project spec
-- `Resources/Fonts`: iA Writer Mono/Duo/Quattro (SIL Open Font License)
+- `Resources/Fonts`: iA Writer Quattro (Sans) and Mono (SIL Open Font License); Serif is the system serif

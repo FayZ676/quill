@@ -13,7 +13,7 @@ extension NSAttributedString.Key {
 /// headings stay the body size and hang their `#`s into the left margin. Links are the
 /// exception: their markup is marked for MarkdownLayoutManager to hide until the caret comes.
 final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
-    var fonts = FontSet(.duo, size: Fonts.defaultSize) { didSet { rebuildBase() } }
+    var fonts = FontSet(.sans, size: Fonts.defaultSize) { didSet { rebuildBase() } }
     /// Off where the screen is too narrow to give up a margin to heading marks.
     var hangsHeadings = true { didSet { rebuildBase() } }
     /// Whether a `[[link]]`'s note exists; links to notes not yet written are drawn fainter,
