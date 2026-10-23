@@ -256,6 +256,7 @@ private struct MoveSheet: View {
                 }
             }
             .searchable(text: $query, isPresented: $searching, prompt: "Type a folder")
+            .modifier(KeepBarWhileSearching())
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .onSubmit(of: .search) { if let best = folders.first { move(into: best.url) } }
@@ -285,6 +286,18 @@ private struct MoveSheet: View {
     private func move(into folder: URL) {
         dismiss()
         state.move(item, into: folder)
+    }
+}
+
+/// Keeps the title and Cancel in place when search starts, rather than the system's habit
+/// of hiding the bar and jumping the list up under it.
+private struct KeepBarWhileSearching: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 17.1, *) {
+            content.searchPresentationToolbarBehavior(.avoidHidingContent)
+        } else {
+            content
+        }
     }
 }
 
