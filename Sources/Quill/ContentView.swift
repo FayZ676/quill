@@ -713,7 +713,7 @@ private struct WordCount: View {
                 .appFont(13)
                 .foregroundStyle(.tertiary)
                 .allowsHitTesting(false)
-            ShortcutsButton()
+            CheatSheetButton()
         }
         .padding(.leading, 12)
         .padding(.trailing, 8)
