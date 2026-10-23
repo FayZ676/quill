@@ -418,7 +418,9 @@ private struct NodeRow: View {
                             .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
                         Spacer()
                         if state.syncStates[node.url] == nil {
-                            count.appFont(12)
+                            if node.isDirectory {
+                                ItemCount(count: node.children?.count).appFont(12)
+                            }
                         } else {
                             SyncBadge(sync: state.syncStates[node.url])
                         }
@@ -443,26 +445,6 @@ private struct NodeRow: View {
                 RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.2)).padding(-4)
             }
         }
-    }
-
-    /// The items in a folder, or the words in a note: as you type, for the open one.
-    @ViewBuilder private var count: some View {
-        if node.isDirectory {
-            RowCount(count: node.children?.count, unit: "item")
-        } else if node.url == state.openFile {
-            LiveWordCount(stats: state.stats)
-        } else {
-            RowCount(count: state.wordCounts[node.url], unit: "word")
-        }
-    }
-}
-
-/// Watches the editor's word count on its own, so typing doesn't re-render the whole sidebar.
-private struct LiveWordCount: View {
-    @ObservedObject var stats: Stats
-
-    var body: some View {
-        RowCount(count: stats.words, unit: "word")
     }
 }
 

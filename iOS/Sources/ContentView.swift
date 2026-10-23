@@ -137,14 +137,10 @@ private struct FolderView: View {
                             .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
                         Spacer()
                         if state.syncStates[node.url] == nil {
-                            Group {
-                                if node.isDirectory {
-                                    RowCount(count: node.children?.count, unit: "item")
-                                } else {
-                                    RowCount(count: state.wordCounts[node.url], unit: "word")
-                                }
+                            if node.isDirectory {
+                                ItemCount(count: node.children?.count)
+                                    .appFont(15, relativeTo: .subheadline)
                             }
-                            .appFont(15, relativeTo: .subheadline)
                         } else {
                             SyncBadge(sync: state.syncStates[node.url])
                         }

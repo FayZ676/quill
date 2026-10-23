@@ -84,13 +84,9 @@ final class Stats: ObservableObject {
     @Published private(set) var words = 0
 
     func update(_ text: String) {
-        let count = Stats.words(in: text)
-        if count != words { words = count }
-    }
-
-    static func words(in text: String) -> Int {
-        text.split(whereSeparator: \.isWhitespace)
+        let count = text.split(whereSeparator: \.isWhitespace)
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
             .count
+        if count != words { words = count }
     }
 }
