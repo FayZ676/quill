@@ -39,6 +39,10 @@ struct ContentView: View {
         } message: {
             Text(state.errorMessage ?? "")
         }
+        .sheet(isPresented: Binding(get: { state.moveTarget != nil },
+                                    set: { if !$0 { state.moveTarget = nil } })) {
+            if let item = state.moveTarget { MoveSheet(item: item) }
+        }
         .sheet(isPresented: $state.choosingLibrary) {
             LibraryChoice().interactiveDismissDisabled()
         }
@@ -200,23 +204,107 @@ private struct ItemMenu: View {
 
     var body: some View {
         Button("Rename", systemImage: "pencil") { state.beginRename(url) }
-        Menu {
-            ForEach(state.moveTargets(for: url), id: \.url) { folder in
-                Button {
-                    state.move(url, into: folder.url)
-                } label: {
-                    Text(String(repeating: "    ", count: max(0, folder.depth - 1))
-                         + (folder.depth == 0 ? state.libraryName : folder.url.lastPathComponent))
-                }
-            }
-        } label: {
-            Label("Move To", systemImage: "folder")
-        }
+        Button("Move To…", systemImage: "folder") { state.moveTarget = url }
         if !url.hasDirectoryPath {
             ShareLink(item: url)
         }
         Divider()
         Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = url }
+    }
+}
+
+/// Moves a document or folder, as Obsidian does: every folder by its path, and a field to
+/// type part of one to find it. Return takes the best match.
+private struct MoveSheet: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    let item: URL
+    @State private var query = ""
+    @FocusState private var typing: Bool
+
+    var body: some View {
+        let folders = matches
+        VStack(spacing: 0) {
+            Header(title: "Move “\(item.hasDirectoryPath ? item.lastPathComponent : FileNode.displayName(item))”") {
+                EmptyView()
+            } trailing: {
+                Button("Cancel") { dismiss() }
+                    .appFont(15, relativeTo: .subheadline)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.top, 8)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(folders.enumerated()), id: \.element.url) { i, folder in
+                        Button { move(into: folder.url) } label: {
+                            Text(folder.path)
+                                .appFont(17, relativeTo: .body)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                // The folder Return would pick.
+                                .background(RoundedRectangle(cornerRadius: 12)
+                                    .fill(i == 0 && !query.isEmpty ? Color.secondary.opacity(0.15) : .clear))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+            .scrollDismissesKeyboard(.never)
+            .overlay {
+                if folders.isEmpty {
+                    Text("No Matching Folder").appFont(17, relativeTo: .body).foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                TextField("Type a folder", text: $query)
+                    .appFont(17, relativeTo: .body)
+                    .focused($typing)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.done)
+                    .onSubmit { if let best = folders.first { move(into: best.url) } }
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Clear")
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            .padding(12)
+        }
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color(uiColor: Theme.background))
+        .onAppear { typing = true }
+    }
+
+    /// The folders the item can go to that match what's typed: those holding it as typed
+    /// first, then those holding its letters in order (“jo25” finds journal/2025).
+    private var matches: [(url: URL, path: String)] {
+        let folders = state.moveTargets(for: item).map { (url: $0.url, path: state.path(of: $0.url)) }
+        let typed = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !typed.isEmpty else { return folders }
+        let exact = folders.filter { $0.path.lowercased().contains(typed) }
+        let loose = folders.filter { !$0.path.lowercased().contains(typed) && Self.inOrder(typed, in: $0.path.lowercased()) }
+        return exact + loose
+    }
+
+    private static func inOrder(_ letters: String, in text: String) -> Bool {
+        var rest = Substring(letters)
+        for c in text where c == rest.first { rest = rest.dropFirst() }
+        return rest.isEmpty
+    }
+
+    private func move(into folder: URL) {
+        dismiss()
+        state.move(item, into: folder)
     }
 }
 
@@ -328,14 +416,7 @@ private struct OptionsMenu: View {
         }
         Section("File") {
             Button("Rename…") { state.beginRename(url) }
-            Menu("Move To") {
-                ForEach(state.moveTargets(for: url), id: \.url) { folder in
-                    Button(String(repeating: "    ", count: max(0, folder.depth - 1))
-                           + (folder.depth == 0 ? state.libraryName : folder.url.lastPathComponent)) {
-                        state.move(url, into: folder.url)
-                    }
-                }
-            }
+            Button("Move To…") { state.moveTarget = url }
             // Text alone: an icon would give the whole section an icon column, unlike the rest.
             ShareLink(item: url) { Text("Share…") }
         }

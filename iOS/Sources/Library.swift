@@ -49,6 +49,8 @@ final class AppState: ObservableObject {
     /// The rename is naming a just-created document; the editor takes over once it's done.
     @Published private(set) var namingNewFile = false
     @Published var deleteTarget: URL?
+    /// The document or folder the Move To sheet is finding a folder for.
+    @Published var moveTarget: URL?
     @Published var errorMessage: String?
     /// First launch: Quill asks where the library lives before anything else.
     @Published var choosingLibrary: Bool
@@ -354,6 +356,12 @@ final class AppState: ObservableObject {
     /// Folders `item` can move to: not where it already is, and not into itself.
     func moveTargets(for item: URL) -> [(url: URL, depth: Int)] {
         folders.filter { $0.url != item.deletingLastPathComponent() && $0.url != item && !isInside($0.url, item) }
+    }
+
+    /// Where `folder` sits in the library, as a path: "journal/2025", or "/" for the library itself.
+    func path(of folder: URL) -> String {
+        let base = root.standardizedFileURL.path, path = folder.standardizedFileURL.path
+        return path == base ? "/" : String(path.dropFirst(base.count + 1))
     }
 
     func delete(_ url: URL) {
