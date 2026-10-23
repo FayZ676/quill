@@ -35,6 +35,15 @@ final class AppState: ObservableObject {
     weak var textView: FocusTextView?
     /// Installed by the editor; writes any unsaved text to disk.
     var flushSave: () -> Void = {}
+    /// The library's notes by name, for following and suggesting `[[links]]`.
+    private(set) var links = LinkResolver([], root: URL(fileURLWithPath: "/"))
+    /// The heading a followed `[[Note#Heading]]` link points into, for the editor to show.
+    var pendingHeading: String?
+    /// Installed by the editor; puts the caret on `pendingHeading` in the open note.
+    var showPendingHeading: () -> Void = {}
+    /// Installed by the editor; rereads the open note, now at the given URL, after Quill
+    /// has rewritten it.
+    var reloadEditor: (URL) -> Void = { _ in }
     /// A just-created file is being named; the editor takes over once that's done.
     private var namingNewFile = false
     private var watcher: FolderWatcher?
@@ -76,7 +85,10 @@ final class AppState: ObservableObject {
 
     func reloadTree() {
         let fresh = FileNode.scan(root)
-        if fresh != tree { tree = fresh }
+        if fresh != tree || links.root != root {
+            links = LinkResolver(fresh, root: root)
+            tree = fresh
+        }
         if let open = openFile, !FileManager.default.fileExists(atPath: open.path) {
             openFile = nil
         }
@@ -124,6 +136,62 @@ final class AppState: ObservableObject {
         let file = URL(fileURLWithPath: url.path, isDirectory: false)
         if !isInside(file, root) { setRoot(file.deletingLastPathComponent()) }
         selection = file
+    }
+
+    // MARK: Links
+
+    /// Opens the note a `[[link]]` names, at the heading it names if any. A note that
+    /// doesn't exist yet is created, as Obsidian does: at the top of the library, or in the
+    /// folder the link names.
+    func openLink(_ target: String) {
+        flushSave()
+        let name = LinkResolver.split(target).name
+        pendingHeading = LinkResolver.heading(in: target)
+        // `[[#Heading]]` points into this note.
+        if name.isEmpty { return showPendingHeading() }
+        if let url = links.resolve(target, from: openFile) {
+            return url == openFile ? showPendingHeading() : openNote(url)
+        }
+        let path = FileNode.markdownExtensions.contains((name as NSString).pathExtension.lowercased()) ? name : name + ".md"
+        let url = root.appendingPathComponent(path, isDirectory: false).standardizedFileURL
+        guard isInside(url, root) else { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data().write(to: url, options: .withoutOverwriting)
+        } catch { return present(error) }
+        pendingHeading = nil
+        reloadTree()
+        expandAncestors(of: url)
+        openNote(url)
+    }
+
+    /// Opens a note, ready to write in.
+    func openNote(_ url: URL) {
+        selection = url
+        DispatchQueue.main.async { [weak self] in self?.focusEditor() }
+    }
+
+    /// After a note or folder moves from `old` to `new`, points every link at where its note
+    /// is now, as Obsidian does. `before` is the library as it was.
+    private func updateLinks(_ before: LinkResolver, moved old: URL, to new: URL) {
+        var moves: [URL: URL] = [:]
+        for note in before.notes {
+            if let moved = rebase(note, from: old, to: new) { moves[note] = moved }
+        }
+        guard !moves.isEmpty else { return }
+        for note in before.notes {
+            let now = moves[note] ?? note
+            guard let text = try? String(contentsOf: now, encoding: .utf8) else { continue }
+            let rewritten = before.rewrite(text, of: note, movedTo: now, moves: moves)
+            guard rewritten != text else { continue }
+            do {
+                try rewritten.write(to: now, atomically: true, encoding: .utf8)
+            } catch {
+                NSLog("Quill: couldn't update links in \(now.path): \(error)")
+                continue
+            }
+            if now == openFile { reloadEditor(now) }
+        }
     }
 
     // MARK: File operations
@@ -176,8 +244,10 @@ final class AppState: ObservableObject {
         let new = old.deletingLastPathComponent().appendingPathComponent(name, isDirectory: isDir)
         guard new != old else { return }
         flushSave()
+        let before = links
         do { try FileManager.default.moveItem(at: old, to: new) } catch { return present(error) }
         relocate(old, to: new)
+        updateLinks(before, moved: old, to: new)
         reloadTree()
     }
 
@@ -202,6 +272,7 @@ final class AppState: ObservableObject {
         guard src.deletingLastPathComponent().path != dir.path, src.path != dir.path, !isInside(dir, src) else { return }
         flushSave()
         let external = !isInside(src, root)
+        let before = links
         do {
             if external {
                 try FileManager.default.copyItem(at: src, to: dest)
@@ -209,7 +280,10 @@ final class AppState: ObservableObject {
                 try FileManager.default.moveItem(at: src, to: dest)
             }
         } catch { return present(error) }
-        if !external { relocate(src, to: dest) }
+        if !external {
+            relocate(src, to: dest)
+            updateLinks(before, moved: src, to: dest)
+        }
         expandAncestors(of: dest)
         reloadTree()
     }
@@ -338,6 +412,10 @@ final class AppState: ObservableObject {
     - ⌃⌘S shows or hides the library
 
     Everything saves automatically.
+
+    ## Links
+
+    Type `[[` to link to another document, picking it from the list that appears. ⌘-click a link to open it; a link to a document you haven't written yet creates it. Renaming or moving a document updates the links to it.
 
     ## Markdown
 

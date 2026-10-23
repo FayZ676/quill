@@ -16,6 +16,8 @@ enum Theme {
                                    dark: NSColor(srgbRed: 0.047, green: 0.051, blue: 0.055, alpha: 1))
     static let text = dynamic(light: gray(0.15), dark: gray(0.86))
     static let markup = dynamic(light: gray(0.66), dark: gray(0.42))
+    /// A `[[link]]` to a note not written yet: between the text and its markup.
+    static let unwritten = dynamic(light: gray(0.45), dark: gray(0.62))
     static let dimmed = dynamic(light: gray(0.80), dark: gray(0.30))
     static let codeBackground = dynamic(light: gray(0, 0.045), dark: gray(1, 0.06))
     /// The app accent (vermilion). Defined once, as AccentColor in Resources/Assets.xcassets;

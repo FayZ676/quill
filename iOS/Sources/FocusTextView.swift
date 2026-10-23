@@ -23,6 +23,13 @@ final class FocusTextView: UITextView {
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         inputAccessoryView = makeKeyBar()
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tappedLink))
+        linkTapDelegate.isOnLink = { [weak self, weak tap] in
+            guard let self, let tap else { return false }
+            return self.noteLink(at: tap.location(in: self)) != nil
+        }
+        tap.delegate = linkTapDelegate
+        addGestureRecognizer(tap)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -193,7 +200,14 @@ final class FocusTextView: UITextView {
             c.wantsPriorityOverSystemBehavior = true
             return c
         }
-        return [
+        // Arrows, Tab and Escape work the note suggestions while they're up.
+        let suggesting = isSuggesting ? [
+            command("Previous Note", UIKeyCommand.inputUpArrow, [], #selector(previousSuggestion)),
+            command("Next Note", UIKeyCommand.inputDownArrow, [], #selector(nextSuggestion)),
+            command("Choose Note", "\t", [], #selector(chooseSelectedSuggestion)),
+            command("Close Suggestions", UIKeyCommand.inputEscape, [], #selector(dismissSuggestions)),
+        ] : []
+        return suggesting + [
             command("Bold", "b", .command, #selector(bold)),
             command("Italic", "i", .command, #selector(italic)),
             command("Link", "k", .command, #selector(link)),
@@ -236,9 +250,29 @@ final class FocusTextView: UITextView {
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(stack)
+        shortcutRow = stack
+
+        // In the shortcuts' place while a `[[link]]` is typed: the notes it could be.
+        suggestionRow.axis = .horizontal
+        suggestionRow.spacing = 4
+        suggestionRow.translatesAutoresizingMaskIntoConstraints = false
+        suggestionBar.showsHorizontalScrollIndicator = false
+        suggestionBar.isHidden = true
+        suggestionBar.translatesAutoresizingMaskIntoConstraints = false
+        suggestionBar.addSubview(suggestionRow)
+        bar.addSubview(suggestionBar)
 
         let guide = bar.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
+            suggestionBar.topAnchor.constraint(equalTo: bar.topAnchor),
+            suggestionBar.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
+            suggestionBar.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 6),
+            suggestionBar.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
+            suggestionRow.topAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.topAnchor),
+            suggestionRow.bottomAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.bottomAnchor),
+            suggestionRow.leadingAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.leadingAnchor),
+            suggestionRow.trailingAnchor.constraint(equalTo: suggestionBar.contentLayoutGuide.trailingAnchor),
+            suggestionRow.heightAnchor.constraint(equalTo: suggestionBar.frameLayoutGuide.heightAnchor),
             rule.topAnchor.constraint(equalTo: bar.topAnchor),
             rule.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
             rule.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
@@ -249,6 +283,77 @@ final class FocusTextView: UITextView {
             stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -6),
         ])
         return bar
+    }
+
+    // MARK: Links
+
+    /// Called with the note a tapped `[[link]]` names.
+    var openNoteLink: ((String) -> Void)?
+    /// The library's notes, for suggesting them as a link is typed.
+    var linkResolver: () -> LinkResolver? = { nil }
+    private let suggester = LinkSuggester()
+    private let linkTapDelegate = LinkTapDelegate()
+    private weak var shortcutRow: UIView?
+    private let suggestionBar = UIScrollView()
+    private let suggestionRow = UIStackView()
+
+    var isSuggesting: Bool { suggester.isShowing }
+
+    /// Taps on a link open it, as in Obsidian; taps anywhere else place the caret as usual.
+    @objc private func tappedLink(_ tap: UITapGestureRecognizer) {
+        if let target = noteLink(at: tap.location(in: self)) { openNoteLink?(target) }
+    }
+
+    private func noteLink(at point: CGPoint) -> String? {
+        let p = CGPoint(x: point.x - textContainerInset.left, y: point.y - textContainerInset.top)
+        let glyph = layoutManager.glyphIndex(for: p, in: textContainer)
+        // The nearest glyph can lie well away from the tap, past the end of a line.
+        guard layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
+                .insetBy(dx: -2, dy: -2).contains(p) else { return nil }
+        let i = layoutManager.characterIndexForGlyph(at: glyph)
+        guard i < textStorage.length else { return nil }
+        return textStorage.attribute(.noteLink, at: i, effectiveRange: nil) as? String
+    }
+
+    /// Offers notes while a `[[link]]` is being typed; call when the text or selection changes.
+    func updateSuggestions() {
+        suggester.update(text: text, caret: selectedRange, resolver: linkResolver())
+        showSuggestions()
+    }
+
+    func chooseSuggestion(_ index: Int? = nil) {
+        guard let edit = suggester.choose(index, in: text) else { return }
+        apply(edit)
+        showSuggestions()
+    }
+
+    @objc private func chooseSelectedSuggestion() { chooseSuggestion() }
+    @objc private func previousSuggestion() { suggester.move(-1); showSuggestions() }
+    @objc private func nextSuggestion() { suggester.move(1); showSuggestions() }
+    @objc private func dismissSuggestions() { suggester.dismiss(); showSuggestions() }
+
+    private func showSuggestions() {
+        let showing = suggester.isShowing
+        suggestionBar.isHidden = !showing
+        shortcutRow?.isHidden = showing
+        suggestionRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard showing else { return }
+        for (i, item) in suggester.items.enumerated() {
+            var config = UIButton.Configuration.plain()
+            config.attributedTitle = AttributedString(item.name, attributes: AttributeContainer([
+                .font: fonts.regular.withSize(15),
+                .foregroundColor: Theme.text,
+            ]))
+            config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10)
+            config.background.cornerRadius = 6
+            config.background.backgroundColor = i == suggester.selected ? Theme.accent.withAlphaComponent(0.18) : .clear
+            let button = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
+                self?.chooseSuggestion(i)
+            })
+            button.accessibilityLabel = item.folder.isEmpty ? item.name : "\(item.name), in \(item.folder)"
+            suggestionRow.addArrangedSubview(button)
+        }
+        suggestionBar.setContentOffset(.zero, animated: false)
     }
 
     // MARK: Text input
@@ -274,6 +379,19 @@ final class FocusTextView: UITextView {
             // The keyboard reads these when it comes up; one already up needs telling.
             if isFirstResponder { reloadInputViews() }
         }
+    }
+}
+
+/// Lets the link tap go first, and only on a link: the text view's own taps wait to see
+/// whether it was one before placing the caret.
+private final class LinkTapDelegate: NSObject, UIGestureRecognizerDelegate {
+    var isOnLink: () -> Bool = { false }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { isOnLink() }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        other is UITapGestureRecognizer
     }
 }
 

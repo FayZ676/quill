@@ -45,6 +45,13 @@ final class AppState: ObservableObject {
     weak var textView: FocusTextView?
     /// Installed by the open editor; writes any unsaved text to disk.
     var flushSave: () -> Void = {}
+    /// The library's notes by name, for following and suggesting `[[links]]`.
+    private(set) var links = LinkResolver([], root: URL(fileURLWithPath: "/"))
+    /// The heading a followed `[[Note#Heading]]` link points into, for the editor to show.
+    var pendingHeading: String?
+    /// Posted when Quill rewrites a note's links, with the note's old and new URLs as
+    /// `"old"` and `"new"`, so an editor showing it can take the change in.
+    static let noteRewritten = Notification.Name("QuillNoteRewritten")
 
     private var children: [URL: [FileNode]] = [:]
     /// The picked folder, kept open for the life of the app (iOS sandbox access).
@@ -88,7 +95,8 @@ final class AppState: ObservableObject {
     func reloadTree() {
         var placeholders = 0
         let fresh = FileNode.scan(root, placeholders: &placeholders)
-        if fresh != tree {
+        if fresh != tree || links.root != root {
+            links = LinkResolver(fresh, root: root)
             tree = fresh
             var map: [URL: [FileNode]] = [root: fresh]
             func index(_ nodes: [FileNode]) {
@@ -202,17 +210,71 @@ final class AppState: ObservableObject {
         let new = old.deletingLastPathComponent().appendingPathComponent(name, isDirectory: isDir)
         guard new != old else { return }
         flushSave()
+        let before = links
         do { try Coordinated.move(old, to: new) } catch { return present(error) }
         relocate(old, to: new)
+        updateLinks(before, moved: old, to: new)
         reloadTree()
     }
 
     func move(_ item: URL, into dir: URL) {
         let dest = dir.appendingPathComponent(item.lastPathComponent, isDirectory: item.hasDirectoryPath)
         flushSave()
+        let before = links
         do { try Coordinated.move(item, to: dest) } catch { return present(error) }
         relocate(item, to: dest)
+        updateLinks(before, moved: item, to: dest)
         reloadTree()
+    }
+
+    // MARK: Links
+
+    /// Opens the note a `[[link]]` in `source` names, at the heading it names if any, over
+    /// the note it's in. A note that doesn't exist yet is created, as Obsidian does: at the
+    /// top of the library, or in the folder the link names. Links within `source` are the
+    /// editor's to follow.
+    func openLink(_ target: String, from source: URL) {
+        flushSave()
+        let name = LinkResolver.split(target).name
+        pendingHeading = LinkResolver.heading(in: target)
+        guard !name.isEmpty else { return }
+        if let url = links.resolve(target, from: source) {
+            if url != source { pages.append(Page(url)) }
+            return
+        }
+        let path = FileNode.markdownExtensions.contains((name as NSString).pathExtension.lowercased()) ? name : name + ".md"
+        let url = root.appendingPathComponent(path, isDirectory: false).standardizedFileURL
+        guard isInside(url, root) else { return }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Coordinated.createFile(url)
+        } catch { return present(error) }
+        pendingHeading = nil
+        reloadTree()
+        pages.append(Page(url))
+    }
+
+    /// After a note or folder moves from `old` to `new`, points every link at where its note
+    /// is now, as Obsidian does. `before` is the library as it was.
+    private func updateLinks(_ before: LinkResolver, moved old: URL, to new: URL) {
+        var moves: [URL: URL] = [:]
+        for note in before.notes {
+            if let moved = rebase(note, from: old, to: new) { moves[note] = moved }
+        }
+        guard !moves.isEmpty else { return }
+        for note in before.notes {
+            let now = moves[note] ?? note
+            guard let text = try? Coordinated.read(now) else { continue }
+            let rewritten = before.rewrite(text, of: note, movedTo: now, moves: moves)
+            guard rewritten != text else { continue }
+            do {
+                try Coordinated.write(rewritten, to: now)
+            } catch {
+                NSLog("Quill: couldn't update links in \(now.path): \(error)")
+                continue
+            }
+            NotificationCenter.default.post(name: Self.noteRewritten, object: self, userInfo: ["old": note, "new": now])
+        }
     }
 
     /// Folders `item` can move to: not where it already is, and not into itself.

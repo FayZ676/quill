@@ -72,6 +72,82 @@ enum MarkdownEdits {
         return TextEdit(range: sel, text: "[\(text)]()", selection: NSRange(location: caret, length: 0))
     }
 
+    // MARK: Wikilinks
+
+    /// Brackets typed around a `[[link]]`, as Obsidian handles them: a second `[` closes the
+    /// link (`[[|]]`), and `]` in front of a closing bracket steps over it. Nil means type
+    /// the character as usual.
+    static func bracket(_ typed: String, in string: String, selection sel: NSRange) -> TextEdit? {
+        guard sel.length == 0 else { return nil }
+        let ns = string as NSString
+        func char(_ i: Int) -> unichar? { i >= 0 && i < ns.length ? ns.character(at: i) : nil }
+        let open: unichar = 91, close: unichar = 93
+        if typed == "[", char(sel.location - 1) == open {
+            // However many of the closing pair are already there.
+            let closing = char(sel.location) == close ? (char(sel.location + 1) == close ? 2 : 1) : 0
+            return TextEdit(range: sel, text: "[" + String(repeating: "]", count: 2 - closing),
+                            selection: NSRange(location: sel.location + 1, length: 0))
+        }
+        if typed == "]", char(sel.location) == close, openLink(in: ns, before: sel.location) != nil {
+            return TextEdit(range: NSRange(location: sel.location, length: 0), text: "",
+                            selection: NSRange(location: sel.location + 1, length: 0))
+        }
+        return nil
+    }
+
+    /// Backspace between a pair of brackets takes out both, so `[[|]]` steps back to `[|]`
+    /// and then to nothing. Nil means delete as usual.
+    static func backspace(in string: String, selection sel: NSRange) -> TextEdit? {
+        let ns = string as NSString
+        guard sel.length == 0, sel.location > 0, sel.location < ns.length,
+              ns.character(at: sel.location - 1) == 91, ns.character(at: sel.location) == 93 else { return nil }
+        return TextEdit(range: NSRange(location: sel.location - 1, length: 2), text: "")
+    }
+
+    /// The name typed so far in a `[[link]]` the caret is in: from just after `[[` to the
+    /// caret. Nil once the name is followed by a heading (`#`) or shown text (`|`), or
+    /// outside a link.
+    static func linkQuery(in string: String, caret: Int) -> NSRange? {
+        let ns = string as NSString
+        guard let start = openLink(in: ns, before: caret) else { return nil }
+        let query = NSRange(location: start, length: caret - start)
+        guard ns.rangeOfCharacter(from: CharacterSet(charactersIn: "|#^"), range: query).location == NSNotFound
+        else { return nil }
+        return query
+    }
+
+    /// Puts `link` in place of the name being typed (`query`, from `linkQuery`), closes the
+    /// link if it isn't yet, and leaves the caret after it.
+    static func completeLink(_ link: String, in string: String, query: NSRange) -> TextEdit {
+        let ns = string as NSString
+        // Whatever of the old name runs on past the caret goes too, up to the link's end.
+        var end = NSMaxRange(query)
+        while end < ns.length, !"]|#^\n[".utf16.contains(ns.character(at: end)) { end += 1 }
+        let range = NSRange(location: query.location, length: end - query.location)
+        let closed = end + 1 < ns.length && ns.substring(with: NSRange(location: end, length: 2)) == "]]"
+        let length = (link as NSString).length
+        if closed {
+            return TextEdit(range: range, text: link, selection: NSRange(location: query.location + length + 2, length: 0))
+        }
+        let atEnd = end >= ns.length || ns.character(at: end) == 10
+        let text = atEnd ? link + "]]" : link
+        return TextEdit(range: range, text: text,
+                        selection: NSRange(location: query.location + (text as NSString).length, length: 0))
+    }
+
+    /// Where the name starts in a `[[` opened before `caret` on its line and not yet closed.
+    private static func openLink(in ns: NSString, before caret: Int) -> Int? {
+        guard caret <= ns.length else { return nil }
+        let lineStart = ns.lineRange(for: NSRange(location: caret, length: 0)).location
+        let before = NSRange(location: lineStart, length: caret - lineStart)
+        let open = ns.range(of: "[[", options: .backwards, range: before)
+        guard open.location != NSNotFound else { return nil }
+        let start = NSMaxRange(open)
+        let inside = NSRange(location: start, length: caret - start)
+        guard ns.range(of: "]]", range: inside).location == NSNotFound else { return nil }
+        return start
+    }
+
     /// Steps the caret's line through # → ## → ### → plain text.
     static func cycleHeading(in string: String, selection sel: NSRange) -> TextEdit {
         let ns = string as NSString

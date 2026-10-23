@@ -79,6 +79,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private var pendingSave: DispatchWorkItem?
     private var diskDate: Date?
     private var fontKey = ""
+    /// The notes links were last styled against, to restyle them as notes come and go.
+    private var linkedNotes: [URL] = []
 
     init(state: AppState) {
         self.state = state
@@ -95,6 +97,15 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         state.flushSave = { [weak self] in self?.save() }
         // Edit › Spelling and Grammar and Substitutions change the text view directly.
         tv.textInputChanged = { [weak self] in self?.state.textInput = $0 }
+        tv.openNoteLink = { [weak self] in self?.state.openLink($0) }
+        tv.linkResolver = { [weak self] in self?.state.links }
+        highlighter.linkExists = { [weak self] target in
+            guard let self else { return true }
+            // `[[#Heading]]` points into this note.
+            return LinkResolver.split(target).name.isEmpty || self.state.links.resolve(target, from: self.url) != nil
+        }
+        state.showPendingHeading = { [weak self] in self?.showPendingHeading() }
+        state.reloadEditor = { [weak self] in self?.reload($0) }
     }
 
     func sync() {
@@ -108,6 +119,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             tv.typingAttributes = highlighter.baseAttributes
             if let storage = tv.textStorage { highlighter.highlightAll(storage) }
             tv.updateLayout()
+        }
+        if state.links.notes != linkedNotes {
+            linkedNotes = state.links.notes
+            if let storage = tv.textStorage { highlighter.highlightAll(storage) }
         }
         tv.typewriter = state.typewriter
         if tv.textInput != state.textInput { tv.textInput = state.textInput }
@@ -137,6 +152,25 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         // A rename moves the open file without changing it: keep caret and undo history.
         if hadDocument && text == tv.string { return }
         load(text)
+        showPendingHeading()
+    }
+
+    /// Puts the caret on the heading a `[[Note#Heading]]` link pointed into.
+    private func showPendingHeading() {
+        guard let heading = state.pendingHeading, let tv = textView else { return }
+        state.pendingHeading = nil
+        guard let line = LinkResolver.headingRange(heading, in: tv.string) else { return }
+        tv.setSelectedRange(NSRange(location: NSMaxRange(line), length: 0))
+        tv.scrollRangeToVisible(line)
+    }
+
+    /// Takes in a change Quill made to the open note's file (its links pointed at notes that
+    /// moved, or the note itself moved to `newURL`), keeping the caret where it was.
+    private func reload(_ newURL: URL) {
+        guard let text = read(newURL) else { return }
+        url = newURL
+        diskDate = modificationDate(newURL)
+        if let tv = textView, text != tv.string { load(text, keepSelection: true) }
     }
 
     private func load(_ text: String, keepSelection: Bool = false) {
@@ -189,11 +223,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         let work = DispatchWorkItem { [weak self] in self?.save() }
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75, execute: work)
+        textView?.updateSuggestions()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         textView?.updateFocus()
         textView?.centerCaret()
+        textView?.updateSuggestions()
     }
 
     // MARK: Files

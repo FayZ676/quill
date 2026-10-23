@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// The writing surface: a centered column with hanging heading marks, focus dimming,
 /// typewriter scrolling and Markdown-aware editing commands.
@@ -169,6 +170,7 @@ final class FocusTextView: NSTextView {
 
     /// Continues lists and quotes on Return; Return on an empty item ends the list.
     override func insertNewline(_ sender: Any?) {
+        if suggester.isShowing { return chooseSuggestion() }
         guard let edit = MarkdownEdits.newline(in: string, selection: selectedRange())
         else { return super.insertNewline(sender) }
         apply(edit)
@@ -186,6 +188,113 @@ final class FocusTextView: NSTextView {
     private func apply(_ edit: TextEdit) {
         insertText(edit.text, replacementRange: edit.range)
         if let selection = edit.selection { setSelectedRange(selection) }
+    }
+
+    // MARK: Links
+
+    /// Called with the note a `[[link]]` names when it's ⌘-clicked.
+    var openNoteLink: ((String) -> Void)?
+    /// The library's notes, for suggesting them as a link is typed.
+    var linkResolver: () -> LinkResolver? = { nil }
+    private let suggester = LinkSuggester()
+    private lazy var suggestionView = NSHostingView(rootView: suggestionList())
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.command),
+           let target = noteLink(at: convert(event.locationInWindow, from: nil)) {
+            openNoteLink?(target)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    private func noteLink(at point: NSPoint) -> String? {
+        guard let storage = textStorage else { return nil }
+        let i = characterIndexForInsertion(at: point)
+        // The insertion point nearest a click can fall just after the character clicked.
+        for index in [i, i - 1] where index >= 0 && index < storage.length {
+            if let target = storage.attribute(.noteLink, at: index, effectiveRange: nil) as? String { return target }
+        }
+        return nil
+    }
+
+    override func insertText(_ text: Any, replacementRange: NSRange) {
+        // Typed brackets only; edits made through `apply` name their range.
+        if replacementRange.location == NSNotFound, let typed = text as? String,
+           let edit = MarkdownEdits.bracket(typed, in: string, selection: selectedRange()) {
+            return apply(edit)
+        }
+        super.insertText(text, replacementRange: replacementRange)
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        guard let edit = MarkdownEdits.backspace(in: string, selection: selectedRange()) else {
+            return super.deleteBackward(sender)
+        }
+        apply(edit)
+    }
+
+    override func moveUp(_ sender: Any?) {
+        guard suggester.isShowing else { return super.moveUp(sender) }
+        suggester.move(-1)
+        showSuggestions()
+    }
+
+    override func moveDown(_ sender: Any?) {
+        guard suggester.isShowing else { return super.moveDown(sender) }
+        suggester.move(1)
+        showSuggestions()
+    }
+
+    override func insertTab(_ sender: Any?) {
+        guard suggester.isShowing else { return super.insertTab(sender) }
+        chooseSuggestion()
+    }
+
+    /// Escape.
+    override func cancelOperation(_ sender: Any?) {
+        guard suggester.isShowing else { return super.cancelOperation(sender) }
+        suggester.dismiss()
+        showSuggestions()
+    }
+
+    /// Offers notes while a `[[link]]` is being typed; call when the text or selection changes.
+    func updateSuggestions() {
+        suggester.update(text: string, caret: selectedRange(), resolver: linkResolver())
+        showSuggestions()
+    }
+
+    private func chooseSuggestion(_ index: Int? = nil) {
+        guard let edit = suggester.choose(index, in: string) else { return }
+        // A click on the list may have taken the keyboard.
+        window?.makeFirstResponder(self)
+        apply(edit)
+        showSuggestions()
+    }
+
+    private func suggestionList() -> LinkSuggestionList {
+        LinkSuggestionList(items: suggester.items, selected: suggester.selected, font: AppState.shared.editorFont) {
+            [weak self] i in self?.chooseSuggestion(i)
+        }
+    }
+
+    /// Puts the list just under the start of the name being typed, or takes it away.
+    private func showSuggestions() {
+        guard suggester.isShowing, let query = suggester.query, let lm = layoutManager, let container = textContainer else {
+            suggestionView.removeFromSuperview()
+            return
+        }
+        suggestionView.rootView = suggestionList()
+        let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: max(0, query.location - 2), length: 0),
+                                   actualCharacterRange: nil)
+        var line = lm.boundingRect(forGlyphRange: NSRange(location: glyphs.location, length: 1), in: container)
+        line.origin.x += textContainerOrigin.x
+        line.origin.y += textContainerOrigin.y
+        let size = NSSize(width: LinkSuggestionList.width, height: LinkSuggestionList.height(for: suggester.items.count))
+        // The list's shadow margin sits outside its card, so line the card up with the text.
+        let x = min(line.minX - 12, bounds.width - size.width)
+        suggestionView.frame = NSRect(x: max(0, x), y: line.maxY - 6, width: size.width, height: size.height)
+        if suggestionView.superview == nil { addSubview(suggestionView) }
     }
 
     // MARK: Text input

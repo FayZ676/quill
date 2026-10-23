@@ -4,12 +4,20 @@ import AppKit
 import UIKit
 #endif
 
+extension NSAttributedString.Key {
+    /// On a `[[wikilink]]`, the note it names, as written.
+    static let noteLink = NSAttributedString.Key("QuillNoteLink")
+}
+
 /// Styles Markdown in place, iA-style: markup characters are greyed out but stay visible,
 /// headings stay the body size and hang their `#`s into the left margin.
 final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     var fonts = FontSet(.duo, size: Fonts.defaultSize) { didSet { rebuildBase() } }
     /// Off where the screen is too narrow to give up a margin to heading marks.
     var hangsHeadings = true { didSet { rebuildBase() } }
+    /// Whether a `[[link]]`'s note exists; links to notes not yet written are drawn fainter,
+    /// as in Obsidian.
+    var linkExists: ((String) -> Bool)?
     private(set) var baseAttributes: [NSAttributedString.Key: Any] = [:]
     private var baseParagraph = NSParagraphStyle()
     private var codeAttributes: [NSAttributedString.Key: Any] = [:]
@@ -124,6 +132,15 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         each(Self.link) { m in
             dim(m.range)
             ts.addAttribute(.foregroundColor, value: Theme.text, range: m.range(at: 1))
+        }
+        each(LinkResolver.wikiLink) { m in
+            dim(m.range)
+            let target = ns.substring(with: m.range(at: 1))
+            let alias = m.range(at: 2)
+            let shown = alias.location != NSNotFound && alias.length > 0 ? alias : m.range(at: 1)
+            let written = linkExists?(target) ?? true
+            ts.addAttribute(.foregroundColor, value: written ? Theme.text : Theme.unwritten, range: shown)
+            ts.addAttribute(.noteLink, value: target, range: m.range)
         }
         each(Self.code) { m in
             ts.addAttributes(codeAttributes, range: m.range)
