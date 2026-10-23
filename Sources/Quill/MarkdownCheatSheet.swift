@@ -71,7 +71,6 @@ struct CheatSheetButton: View {
 
 private struct CheatSheet: View {
     @State private var query = ""
-    @FocusState private var searching: Bool
 
     /// The sections with only the entries that hold every word typed.
     private var matches: [EntrySection] {
@@ -88,17 +87,8 @@ private struct CheatSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.tertiary)
-                TextField("Search, like “bold” or “list”", text: $query)
-                    .textFieldStyle(.plain)
-                    .focused($searching)
-            }
-            .appFont(14)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
-            .padding(12)
+            SearchField(text: $query, prompt: "Search, like “bold” or “list”")
+                .padding(12)
 
             Divider()
 
@@ -127,8 +117,38 @@ private struct CheatSheet: View {
             }
         }
         .frame(width: 360, height: 440)
-        .background(Color(nsColor: Theme.background))
-        .onAppear { searching = true }
+    }
+}
+
+/// AppKit's search field, for its magnifier and clear button; takes the keyboard when shown.
+private struct SearchField: NSViewRepresentable {
+    @Binding var text: String
+    let prompt: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = prompt
+        field.delegate = context.coordinator
+        field.focusRingType = .none
+        DispatchQueue.main.async { field.window?.makeFirstResponder(field) }
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        if field.stringValue != text { field.stringValue = text }
+    }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        let text: Binding<String>
+
+        init(text: Binding<String>) { self.text = text }
+
+        func controlTextDidChange(_ note: Notification) {
+            guard let field = note.object as? NSSearchField else { return }
+            text.wrappedValue = field.stringValue
+        }
     }
 }
 
@@ -146,12 +166,11 @@ private struct EntryRow: View {
                     .padding(.vertical, 1)
                     .background(Color(nsColor: Theme.codeBackground), in: RoundedRectangle(cornerRadius: 4))
             }
-            if let shortcut = entry.shortcut {
-                Text(shortcut)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-                    .frame(minWidth: 34, alignment: .trailing)
-            }
+            // Held open when empty, so the Markdown lines up down the sheet.
+            Text(entry.shortcut ?? "")
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
+                .frame(minWidth: 34, alignment: .trailing)
         }
     }
 }
