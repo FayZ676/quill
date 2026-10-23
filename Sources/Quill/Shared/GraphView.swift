@@ -6,8 +6,8 @@ import UIKit
 #endif
 
 /// The library as a web of notes, as in Obsidian: a dot for each note and a line for each
-/// link, pulled into shape by a little physics. Drag to pan, pinch to zoom, drag a dot to
-/// move it, and click one to open the note. Double-click the background to fit it all in.
+/// link, pulled into shape by a little physics. Drag or swipe with two fingers to pan, pinch
+/// to zoom, drag a dot to move it, and click one to open the note. Double-click the background to fit it all in.
 struct GraphView: View {
     let graph: LinkGraph
     /// The note open in the editor, drawn in the accent.
@@ -41,6 +41,12 @@ struct GraphView: View {
             .contentShape(Rectangle())
             .gesture(dragGesture(size))
             .simultaneousGesture(pinchGesture(size))
+            #if os(macOS)
+            .background(ScrollWheelReader { delta in
+                holdView(size)
+                offset = CGSize(width: offset.width + delta.width, height: offset.height + delta.height)
+            })
+            #endif
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let point): hovered = node(at: point, view)
