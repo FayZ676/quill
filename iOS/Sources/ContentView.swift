@@ -267,20 +267,27 @@ private struct NewItemSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField(item.placeholder, text: $name)
-                    .appFont(17, relativeTo: .body)
-                    .focused($naming)
-                    .submitLabel(.done)
-                    .onSubmit(create)
-                    .listRowBackground(Color.secondary.opacity(0.1))
+                LabeledContent("Name") {
+                    TextField(item.placeholder, text: $name)
+                        .multilineTextAlignment(.trailing)
+                        .focused($naming)
+                        .submitLabel(.done)
+                        .onSubmit(create)
+                }
+                .appFont(17, relativeTo: .body)
+                .listRowBackground(Color.secondary.opacity(0.1))
                 Button { choosingFolder = true } label: {
-                    LabeledContent {
-                        Text(PathMatch.path(of: dir, in: state.root))
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                    } label: {
-                        Label("In", systemImage: "folder").foregroundStyle(.primary)
+                    LabeledContent("Location") {
+                        HStack(spacing: 6) {
+                            Text(PathMatch.path(of: dir, in: state.root))
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
+                    .foregroundStyle(.primary)
                     .appFont(17, relativeTo: .body)
                 }
                 .listRowBackground(Color.secondary.opacity(0.1))

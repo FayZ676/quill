@@ -290,24 +290,29 @@ private struct NewItemPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(item.isFolder ? "New Folder" : "New File").appFont(15, bold: true)
-            TextField(item.placeholder, text: $name)
-                .textFieldStyle(.roundedBorder)
-                .appFont(14)
-                .focused($naming)
-                .onSubmit(create)
-            HStack(spacing: 8) {
-                Text("In").appFont(14).foregroundStyle(.secondary)
-                Button { choosingFolder = true } label: {
-                    Label {
-                        Text(PathMatch.path(of: dir, in: state.root))
-                            .appFont(14)
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                    } icon: {
-                        Image(systemName: "folder").foregroundStyle(Color.accentColor)
-                    }
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 12) {
+                GridRow {
+                    Text("Name").appFont(14).gridColumnAlignment(.trailing)
+                    TextField(item.placeholder, text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .appFont(14)
+                        .focused($naming)
+                        .onSubmit(create)
                 }
-                .help("Choose a Folder")
+                GridRow {
+                    Text("Location").appFont(14)
+                    Button { choosingFolder = true } label: {
+                        Label {
+                            Text(PathMatch.path(of: dir, in: state.root))
+                                .appFont(14)
+                                .lineLimit(1)
+                                .truncationMode(.head)
+                        } icon: {
+                            Image(systemName: "folder").foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .help("Choose a Folder")
+                }
             }
             HStack {
                 Spacer()
