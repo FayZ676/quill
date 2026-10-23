@@ -42,6 +42,9 @@ final class AppState: ObservableObject {
     @Published var fontSize: Double { didSet { defaults.set(fontSize, forKey: "fontSize") } }
     @Published var editorFont: EditorFont { didSet { defaults.set(editorFont.rawValue, forKey: "editorFont") } }
     @Published var textInput: TextInput { didSet { textInput.save(defaults) } }
+    @Published var appearance: Appearance {
+        didSet { defaults.set(appearance.rawValue, forKey: "appearance"); appearance.apply() }
+    }
 
     @Published var renameTarget: URL?
     @Published var renameText = ""
@@ -84,6 +87,7 @@ final class AppState: ObservableObject {
         fontSize = size > 0 ? size : Fonts.defaultSize
         editorFont = EditorFont(rawValue: defaults.string(forKey: "editorFont") ?? "") ?? .duo
         textInput = TextInput.load(defaults)
+        appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         choosingLibrary = !defaults.bool(forKey: "libraryChosen")
         root = Self.localLibrary
 

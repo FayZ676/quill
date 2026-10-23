@@ -16,6 +16,8 @@ struct QuillApp: App {
                 .environment(\.editorFont, state.editorFont)
                 .appFont(17, relativeTo: .body)
                 .tint(Color(uiColor: Theme.accent))
+                // The window exists by now, so the saved appearance can reach it.
+                .onAppear { state.appearance.apply() }
         }
     }
 }

@@ -30,11 +30,7 @@ enum Theme {
                                     dark: accent.withAlphaComponent(0.45))
 }
 
-/// Light or dark for Quill alone, or whatever the Mac is set to.
-enum Appearance: String, CaseIterable, Identifiable {
-    case system = "System", light = "Light", dark = "Dark"
-    var id: String { rawValue }
-
+extension Appearance {
     func apply() {
         switch self {
         case .system: NSApp.appearance = nil

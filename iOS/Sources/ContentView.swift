@@ -312,6 +312,12 @@ private struct OptionsMenu: View {
             Button("Smaller") { state.fontSize = max(11, state.fontSize - 1) }
             Button("Bigger") { state.fontSize = min(32, state.fontSize + 1) }
         }
+        Section("Appearance") {
+            Picker("Appearance", selection: $state.appearance) {
+                ForEach(Appearance.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.menu)
+        }
         Section("Spelling and Grammar") {
             Toggle("Auto-Correction", isOn: $state.textInput.correctSpelling)
             Toggle("Check Spelling", isOn: $state.textInput.checkSpelling)
@@ -457,6 +463,14 @@ private struct WritingSections: View {
             Stepper("Size: \(Int(state.fontSize))", value: $state.fontSize, in: 11...32)
         } header: {
             Text("Font").appFont(13, relativeTo: .footnote)
+        }
+        Section {
+            Picker("Appearance", selection: $state.appearance) {
+                ForEach(Appearance.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Appearance").appFont(13, relativeTo: .footnote)
         }
     }
 }

@@ -74,6 +74,12 @@ enum FocusStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Light or dark for Quill alone, or whatever the device is set to. Each app's Theme applies it.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system = "System", light = "Light", dark = "Dark"
+    var id: String { rawValue }
+}
+
 final class Stats: ObservableObject {
     @Published private(set) var words = 0
 

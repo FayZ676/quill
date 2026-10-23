@@ -23,3 +23,17 @@ enum Theme {
     /// UIKit tints the caret and selection with it.
     static let accent = UIColor(named: "AccentColor") ?? UIColor(red: 0.949, green: 0.416, blue: 0.169, alpha: 1)
 }
+
+extension Appearance {
+    /// Sets every Quill window, sheets included, to this appearance.
+    func apply() {
+        let style: UIUserInterfaceStyle = switch self {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            scene.windows.forEach { $0.overrideUserInterfaceStyle = style }
+        }
+    }
+}
