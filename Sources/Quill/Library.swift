@@ -14,6 +14,8 @@ final class AppState: ObservableObject {
     @Published private(set) var loading = true
     /// Files iCloud hasn't brought to this Mac yet.
     @Published private(set) var syncStates: [URL: SyncState] = [:]
+    /// Words in each note, for the sidebar.
+    @Published private(set) var wordCounts: [URL: Int] = [:]
     @Published var selection: URL? { didSet { if selection != oldValue { selectionChanged() } } }
     @Published private(set) var openFile: URL?
     /// The graph of notes stands in for the editor.
@@ -57,6 +59,8 @@ final class AppState: ObservableObject {
     private var scanning = false
     /// Another scan was asked for while one ran.
     private var rescan = false
+    /// Only used on the scan queue.
+    private let wordCounter = WordCounter()
     /// Counts graph builds, so a slow one can't land after a newer one.
     private var graphBuild = 0
 
@@ -134,6 +138,7 @@ final class AppState: ObservableObject {
         }
         if loading { loading = false }
         if scan.syncStates != syncStates { syncStates = scan.syncStates }
+        countWords(scan)
 
         if rescan {
             rescan = false
@@ -146,6 +151,19 @@ final class AppState: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
         rebuildGraph()
+    }
+
+    /// Counts words once the tree has landed, so reading a large library for the first time
+    /// doesn't hold up the sidebar.
+    private func countWords(_ scan: Scan) {
+        let counter = wordCounter
+        Self.scanQueue.async {
+            let counts = counter.counts(scan.tree, syncStates: scan.syncStates)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, scan.root == self.root, counts != self.wordCounts else { return }
+                self.wordCounts = counts
+            }
+        }
     }
 
     func chooseRoot() {

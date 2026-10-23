@@ -136,7 +136,18 @@ private struct FolderView: View {
                             .lineLimit(1)
                             .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
                         Spacer()
-                        SyncBadge(sync: state.syncStates[node.url])
+                        if state.syncStates[node.url] == nil {
+                            Group {
+                                if node.isDirectory {
+                                    RowCount(count: node.children?.count, unit: "item")
+                                } else {
+                                    RowCount(count: state.wordCounts[node.url], unit: "word")
+                                }
+                            }
+                            .appFont(15, relativeTo: .subheadline)
+                        } else {
+                            SyncBadge(sync: state.syncStates[node.url])
+                        }
                     }
                 } icon: {
                     Image(systemName: node.isDirectory ? "folder" : "doc.text")
