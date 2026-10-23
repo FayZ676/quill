@@ -92,6 +92,8 @@ struct QuillCommands: Commands {
                 withAnimation { state.sidebarShown.toggle() }
             }
             .keyboardShortcut("s", modifiers: [.control, .command])
+            Button(state.showingGraph ? "Hide Graph" : "Show Graph") { state.toggleGraph() }
+                .keyboardShortcut("g", modifiers: [.option, .command])
             Divider()
             Toggle("Focus Mode", isOn: $state.focusEnabled)
                 .keyboardShortcut("d", modifiers: [.command, .shift])

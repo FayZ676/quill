@@ -14,8 +14,9 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // In the sidebar, so they come and go with it.
                 HStack(spacing: 6) {
-                    Spacer()
                     SidebarActions()
+                    Spacer()
+                    GraphToggle()
                 }
                 .modifier(TitleBar(chrome: state.chrome))
                 BarDivider(chrome: state.chrome)
@@ -30,10 +31,16 @@ struct ContentView: View {
 
             ZStack(alignment: .bottom) {
                 EditorView(state: state)
-                if state.openFile == nil {
-                    EmptyEditor()
+                // Over the editor rather than in its place, so the open document keeps its
+                // caret and undo history for when you come back.
+                if state.showingGraph {
+                    GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
+                } else {
+                    if state.openFile == nil {
+                        EmptyEditor()
+                    }
+                    WordCount(stats: state.stats, chrome: state.chrome)
                 }
-                WordCount(stats: state.stats, chrome: state.chrome)
             }
             // Gives way to the sidebar rather than pushing it off the window.
             .frame(minWidth: 0, maxWidth: .infinity)
@@ -109,11 +116,19 @@ private struct DetailBar: View {
         HStack(spacing: 6) {
             SidebarToggle()
             Spacer()
-            FocusToggle()
-            MoreButton()
+            if !state.showingGraph {
+                FocusToggle()
+                MoreButton()
+            }
         }
+        // Keeps the bar its height with the buttons gone.
+        .frame(minHeight: 30)
         .overlay {
-            if let file = state.openFile { TitleField(file: file) }
+            if state.showingGraph {
+                Text("Graph").appFont(15, bold: true)
+            } else if let file = state.openFile {
+                TitleField(file: file)
+            }
         }
     }
 }
@@ -227,13 +242,28 @@ private struct SidebarActions: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        // New File at the outer edge, as on iPhone and iPad.
-        Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon(nudge: -1) }
-            .buttonStyle(.bare)
-            .help("New Folder (⇧⌘N)")
+        // New File at the outer edge.
         Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon(nudge: -1) }
             .buttonStyle(.bare)
             .help("New File (⌘N)")
+        Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon(nudge: -1) }
+            .buttonStyle(.bare)
+            .help("New Folder (⇧⌘N)")
+    }
+}
+
+/// Shows the graph of notes where the editor goes; lit while it's there, like the focus eye.
+private struct GraphToggle: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Button { state.toggleGraph() } label: {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .toolbarIcon()
+                .foregroundStyle(state.showingGraph ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.bare)
+        .help(state.showingGraph ? "Hide Graph (⌥⌘G)" : "Show Graph (⌥⌘G)")
     }
 }
 

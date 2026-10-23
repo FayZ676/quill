@@ -200,6 +200,18 @@ struct LinkResolver {
         return path
     }
 
+    /// What each link in `text` points at, as written, leaving out code and web links.
+    static func targets(in text: String) -> [String] {
+        let ns = text as NSString
+        let plain = codeSpan.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length),
+                                                      withTemplate: "")
+        let range = NSRange(location: 0, length: (plain as NSString).length)
+        func captures(_ regex: NSRegularExpression) -> [String] {
+            regex.matches(in: plain, range: range).map { (plain as NSString).substring(with: $0.range(at: 1)) }
+        }
+        return captures(wikiLink) + captures(markdownLink).compactMap(localPath)
+    }
+
     /// The line of the heading called `name` in `text`, ignoring case, for opening a
     /// `[[Note#Heading]]` link at it.
     static func headingRange(_ name: String, in text: String) -> NSRange? {

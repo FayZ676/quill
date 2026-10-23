@@ -14,6 +14,9 @@ final class AppState: ObservableObject {
     @Published private(set) var syncStates: [URL: SyncState] = [:]
     @Published var selection: URL? { didSet { if selection != oldValue { selectionChanged() } } }
     @Published private(set) var openFile: URL?
+    /// The graph of notes stands in for the editor.
+    @Published private(set) var showingGraph = false
+    @Published private(set) var graph = LinkGraph()
 
     @Published var focusEnabled: Bool { didSet { defaults.set(focusEnabled, forKey: "focusEnabled") } }
     @Published var focusStyle: FocusStyle { didSet { defaults.set(focusStyle.rawValue, forKey: "focusStyle") } }
@@ -48,6 +51,8 @@ final class AppState: ObservableObject {
     private var namingNewFile = false
     private var watcher: FolderWatcher?
     private var recheck: DispatchWorkItem?
+    /// Counts graph builds, so a slow one can't land after a newer one.
+    private var graphBuild = 0
 
     private init() {
         focusEnabled = defaults.bool(forKey: "focusEnabled")
@@ -103,6 +108,7 @@ final class AppState: ObservableObject {
             recheck = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
+        rebuildGraph()
     }
 
     func chooseRoot() {
@@ -136,6 +142,43 @@ final class AppState: ObservableObject {
         let file = URL(fileURLWithPath: url.path, isDirectory: false)
         if !isInside(file, root) { setRoot(file.deletingLastPathComponent()) }
         selection = file
+    }
+
+    // MARK: Graph
+
+    func toggleGraph() {
+        if showingGraph { closeGraph() } else { showGraph() }
+    }
+
+    func showGraph() {
+        flushSave()
+        // Keys would otherwise still type into the document behind the graph.
+        textView?.window?.makeFirstResponder(nil)
+        selection = nil
+        showingGraph = true
+        chrome.reveal()
+        rebuildGraph()
+    }
+
+    /// Back to the note that was open.
+    func closeGraph() {
+        guard showingGraph else { return }
+        showingGraph = false
+        selection = openFile
+        focusEditor()
+    }
+
+    private func rebuildGraph() {
+        guard showingGraph else { return }
+        graphBuild += 1
+        let build = graphBuild, links = links
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fresh = LinkGraph.build(links)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, build == self.graphBuild, fresh != self.graph else { return }
+                self.graph = fresh
+            }
+        }
     }
 
     // MARK: Links
@@ -341,7 +384,10 @@ final class AppState: ObservableObject {
     }
 
     private func selectionChanged() {
-        guard let url = selection, !url.hasDirectoryPath, url != openFile else { return }
+        guard let url = selection, !url.hasDirectoryPath else { return }
+        // Picking a note, even the one that was open, leaves the graph for the editor.
+        showingGraph = false
+        guard url != openFile else { return }
         flushSave()
         openFile = url
         defaults.set(url.path, forKey: "lastFile")
@@ -409,7 +455,7 @@ final class AppState: ObservableObject {
 
     ## Links
 
-    Type `[[` to link to another document, picking it from the list that appears. ⌘-click a link to open it; a link to a document you haven't written yet creates it. Renaming or moving a document updates the links to it.
+    Type `[[` to link to another document, picking it from the list that appears. ⌘-click a link to open it; a link to a document you haven't written yet creates it. Renaming or moving a document updates the links to it. ⌥⌘G shows all your documents and the links between them as a graph.
 
     ## Markdown
 
