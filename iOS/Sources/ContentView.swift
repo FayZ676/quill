@@ -127,44 +127,64 @@ private struct FolderView: View {
     }
 
     private func rows(_ nodes: [FileNode]) -> some View {
-        ForEach(nodes) { node in
-            // A plain button rather than a NavigationLink: no chevron, like the Mac sidebar.
-            Button { state.pages.append(Page(node.url)) } label: {
-                Label {
-                    HStack {
-                        Text(node.name)
-                            .lineLimit(1)
-                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
-                        Spacer()
-                        if state.syncStates[node.url] == nil {
-                            if node.isDirectory {
-                                ItemCount(count: node.children?.count)
-                                    .appFont(15, relativeTo: .subheadline)
-                            }
-                        } else {
-                            SyncBadge(sync: state.syncStates[node.url])
+        ForEach(nodes) { NodeRow(node: $0) }
+    }
+}
+
+/// A document or folder in the library. Drag one onto a folder to move it there.
+private struct NodeRow: View {
+    @EnvironmentObject var state: AppState
+    let node: FileNode
+    @State private var dropTargeted = false
+
+    var body: some View {
+        // A plain button rather than a NavigationLink: no chevron, like the Mac sidebar.
+        Button { state.pages.append(Page(node.url)) } label: {
+            Label {
+                HStack {
+                    Text(node.name)
+                        .lineLimit(1)
+                        .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                    Spacer()
+                    if state.syncStates[node.url] == nil {
+                        if node.isDirectory {
+                            ItemCount(count: node.children?.count)
+                                .appFont(15, relativeTo: .subheadline)
                         }
+                    } else {
+                        SyncBadge(sync: state.syncStates[node.url])
                     }
-                } icon: {
-                    Image(systemName: node.isDirectory ? "folder" : "doc.text")
-                        .foregroundStyle(Color.accentColor)
                 }
-                .contentShape(Rectangle())
-                .background(PageColorRow())
+            } icon: {
+                Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                    .foregroundStyle(Color.accentColor)
             }
-            .foregroundStyle(.primary)
-            .contextMenu { ItemMenu(url: node.url) }
-            .swipeActions {
-                // Icons alone: with their names too, iOS pads them into wide, fat pills.
-                Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = node.url }
-                    .labelStyle(.iconOnly)
-                    .tint(.red)
-                Button("Rename", systemImage: "pencil") { state.beginRename(node.url) }
-                    .labelStyle(.iconOnly)
-                    .tint(.gray)
+            .contentShape(Rectangle())
+            .background(PageColorRow())
+            .background {
+                if dropTargeted {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.2)).padding(-6)
+                }
             }
-            .listRowSeparator(.hidden)
         }
+        .foregroundStyle(.primary)
+        .contextMenu { ItemMenu(url: node.url) }
+        // Touch and hold, then move: the menu gives way to the drag.
+        .onDrag { NSItemProvider(object: node.url as NSURL) }
+        // Only folders take drops: dropped on a document, an item would stay where it is.
+        .onDrop(of: node.isDirectory ? [.fileURL] : [], isTargeted: $dropTargeted) {
+            state.drop($0, into: node.url)
+        }
+        .swipeActions {
+            // Icons alone: with their names too, iOS pads them into wide, fat pills.
+            Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = node.url }
+                .labelStyle(.iconOnly)
+                .tint(.red)
+            Button("Rename", systemImage: "pencil") { state.beginRename(node.url) }
+                .labelStyle(.iconOnly)
+                .tint(.gray)
+        }
+        .listRowSeparator(.hidden)
     }
 }
 

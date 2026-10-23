@@ -308,6 +308,29 @@ final class AppState: ObservableObject {
         reloadTree()
     }
 
+    /// Moves documents and folders dragged within the library into `dir`. Anything from
+    /// outside the library, or that can't go there (into itself, say), is left where it is.
+    func drop(_ providers: [NSItemProvider], into dir: URL) -> Bool {
+        let files = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        for provider in files {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async {
+                    guard let item = self.item(at: url),
+                          self.moveTargets(for: item).contains(where: { $0.url == dir }) else { return }
+                    self.move(item, into: dir)
+                }
+            }
+        }
+        return !files.isEmpty
+    }
+
+    /// The library's URL for the item at `url`: a dragged URL can lose a folder's trailing slash.
+    private func item(at url: URL) -> URL? {
+        let path = url.standardizedFileURL.path
+        return children.values.lazy.flatMap { $0 }.first { $0.url.standardizedFileURL.path == path }?.url
+    }
+
     // MARK: Links
 
     /// Opens the note a `[[link]]` in `source` names, at the heading it names if any, over
@@ -486,6 +509,7 @@ final class AppState: ObservableObject {
 
     - Tap ✎ to start a new document
     - Touch and hold a document to rename, move, share or delete it
+    - Drag a document or folder onto a folder to move it there
     - Tap a document's title to rename it
     - To write in the same files as Quill on your Mac, open the library settings and choose its folder in iCloud Drive
 
