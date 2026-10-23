@@ -220,69 +220,49 @@ private struct MoveSheet: View {
     @Environment(\.dismiss) private var dismiss
     let item: URL
     @State private var query = ""
-    @FocusState private var typing: Bool
+    @State private var searching = false
 
     var body: some View {
         let folders = matches
-        VStack(spacing: 0) {
-            Header(title: "Move “\(item.hasDirectoryPath ? item.lastPathComponent : FileNode.displayName(item))”") {
-                EmptyView()
-            } trailing: {
-                Button("Cancel") { dismiss() }
-                    .appFont(15, relativeTo: .subheadline)
-                    .padding(.horizontal, 16)
-            }
-            .padding(.top, 8)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(folders.enumerated()), id: \.element.url) { i, folder in
-                        Button { move(into: folder.url) } label: {
-                            Text(folder.path)
-                                .appFont(17, relativeTo: .body)
-                                .lineLimit(1)
-                                .truncationMode(.head)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                // The folder Return would pick.
-                                .background(RoundedRectangle(cornerRadius: 12)
-                                    .fill(i == 0 && !query.isEmpty ? Color.secondary.opacity(0.15) : .clear))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
+        // The system's bar and search field, so a long title truncates instead of crowding
+        // Cancel, and the field rides the keyboard however the sheet arrives.
+        NavigationStack {
+            List(Array(folders.enumerated()), id: \.element.url) { i, folder in
+                Button { move(into: folder.url) } label: {
+                    Text(folder.path)
+                        .appFont(17, relativeTo: .body)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 8)
+                .buttonStyle(.plain)
+                // The folder Return would pick.
+                .listRowBackground(i == 0 && !query.isEmpty ? Color.secondary.opacity(0.15) : .clear)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.never)
             .overlay {
                 if folders.isEmpty {
                     Text("No Matching Folder").appFont(17, relativeTo: .body).foregroundStyle(.secondary)
                 }
             }
-            HStack {
-                TextField("Type a folder", text: $query)
-                    .appFont(17, relativeTo: .body)
-                    .focused($typing)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .submitLabel(.done)
-                    .onSubmit { if let best = folders.first { move(into: best.url) } }
-                if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Clear")
+            .navigationTitle("Move “\(item.hasDirectoryPath ? item.lastPathComponent : FileNode.displayName(item))”")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .background(Capsule().fill(Color.secondary.opacity(0.15)))
-            .padding(12)
+            .searchable(text: $query, isPresented: $searching, prompt: "Type a folder")
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .onSubmit(of: .search) { if let best = folders.first { move(into: best.url) } }
         }
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(uiColor: Theme.background))
-        .onAppear { typing = true }
+        .onAppear { searching = true }
     }
 
     /// The folders the item can go to that match what's typed: those holding it as typed
