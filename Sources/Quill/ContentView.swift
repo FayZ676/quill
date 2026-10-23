@@ -290,29 +290,34 @@ private struct NewItemPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(item.isFolder ? "New Folder" : "New File").appFont(15, bold: true)
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 12) {
-                GridRow {
-                    Text("Name").appFont(14).gridColumnAlignment(.trailing)
-                    TextField(item.placeholder, text: $name)
-                        .textFieldStyle(.roundedBorder)
-                        .appFont(14)
-                        .focused($naming)
-                        .onSubmit(create)
-                }
-                GridRow {
-                    Text("Location").appFont(14)
-                    Button { choosingFolder = true } label: {
-                        Label {
-                            Text(PathMatch.path(of: dir, in: state.root))
-                                .appFont(14)
-                                .lineLimit(1)
-                                .truncationMode(.head)
-                        } icon: {
-                            Image(systemName: "folder").foregroundStyle(Color.accentColor)
-                        }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Name").appFont(13).foregroundStyle(.secondary)
+                TextField(item.placeholder, text: $name)
+                    .textFieldStyle(.plain)
+                    .appFont(14)
+                    .focused($naming)
+                    .onSubmit(create)
+                    .modifier(FieldBox(lit: naming))
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Location").appFont(13).foregroundStyle(.secondary)
+                Button { choosingFolder = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder").foregroundStyle(Color.accentColor)
+                        Text(PathMatch.path(of: dir, in: state.root))
+                            .appFont(14)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
-                    .help("Choose a Folder")
+                    .modifier(FieldBox(lit: false))
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help("Choose a Folder")
             }
             HStack {
                 Spacer()
@@ -336,6 +341,21 @@ private struct NewItemPanel: View {
     private func create() {
         dismiss()
         state.create(item, named: name, in: dir)
+    }
+}
+
+/// The New sheet's boxes: the name field and the location, alike so they line up.
+private struct FieldBox: ViewModifier {
+    /// Ringed in the accent, as a focused field is.
+    let lit: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(lit ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: lit ? 2 : 1))
     }
 }
 
