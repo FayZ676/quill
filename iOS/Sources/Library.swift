@@ -346,8 +346,11 @@ final class AppState: ObservableObject {
         for page in pages {
             if let moved = rebase(page.url, from: old, to: new) { page.url = moved }
         }
-        // A screen for something moved out of the folders above it no longer fits the stack.
-        if let i = pages.indices.dropFirst().first(where: { !isInside(pages[$0].url, pages[$0 - 1].url) }) {
+        // A screen for something moved out of the folder above it no longer fits the stack.
+        // (Above a note there can be another note, followed from a link in it.)
+        if let i = pages.indices.dropFirst().first(where: {
+            pages[$0 - 1].url.hasDirectoryPath && !isInside(pages[$0].url, pages[$0 - 1].url)
+        }) {
             pages.removeSubrange(i...)
         }
         if let first = pages.first, !isInside(first.url, root) { pages = [] }
