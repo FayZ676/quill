@@ -15,9 +15,9 @@ struct ContentView: View {
                 // In the sidebar, so they come and go with it. In the iPhone library's order.
                 HStack(spacing: 6) {
                     GraphToggle()
+                    Spacer()
                     GoToButton()
                     NewButton()
-                    Spacer()
                 }
                 .modifier(TitleBar(chrome: state.chrome))
                 BarDivider(chrome: state.chrome)
