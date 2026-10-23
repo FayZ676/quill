@@ -12,11 +12,12 @@ struct ContentView: View {
             // Stacked rather than inset: the list scrolls under an inset and its top rows
             // would be stuck there.
             VStack(spacing: 0) {
-                // In the sidebar, so they come and go with it.
+                // In the sidebar, so they come and go with it. In the iPhone library's order.
                 HStack(spacing: 6) {
-                    SidebarActions()
-                    Spacer()
                     GraphToggle()
+                    GoToButton()
+                    NewButton()
+                    Spacer()
                 }
                 .modifier(TitleBar(chrome: state.chrome))
                 BarDivider(chrome: state.chrome)
@@ -73,6 +74,7 @@ struct ContentView: View {
                 .onChange(of: geometry.safeAreaInsets.top) { buttonStripHeight = $0 }
         })
         .background(Color(nsColor: Theme.background).ignoresSafeArea())
+        .sheet(isPresented: $state.goingTo) { GoToPanel() }
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back. A turn later, as `$hidden` fires before `hidden` changes:
         // sliding the sidebar right away redraws the bars while they still read as shown,
@@ -238,17 +240,114 @@ private struct SidebarToggle: View {
     }
 }
 
-private struct SidebarActions: View {
+/// Drops down New File and New Folder.
+private struct NewButton: View {
+    @EnvironmentObject var state: AppState
+    @State private var anchor = MenuAnchor()
+
+    var body: some View {
+        Button {
+            guard let view = anchor.view else { return }
+            NewMenu.make(state).popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.height + 4 : -4), in: view)
+        } label: {
+            Image(systemName: "plus").toolbarIcon()
+        }
+        .buttonStyle(.bare)
+        .background(MenuAnchorView(anchor: anchor))
+        .help("New File or Folder")
+    }
+}
+
+private struct GoToButton: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        // New File at the outer edge.
-        Button { state.newFile() } label: { Image(systemName: "square.and.pencil").toolbarIcon(nudge: -1) }
+        Button { state.goingTo = true } label: { Image(systemName: "magnifyingglass").toolbarIcon() }
             .buttonStyle(.bare)
-            .help("New File (⌘N)")
-        Button { state.newFolder() } label: { Image(systemName: "folder.badge.plus").toolbarIcon(nudge: -1) }
-            .buttonStyle(.bare)
-            .help("New Folder (⇧⌘N)")
+            .help("Go To (⇧⌘O)")
+    }
+}
+
+/// Finds a document or folder by typing part of its path, as Obsidian's quick switcher does.
+/// The arrow keys move through the matches, Return goes to the one picked, Escape closes.
+private struct GoToPanel: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var picked = 0
+    @State private var keys: Any?
+    @FocusState private var typing: Bool
+
+    var body: some View {
+        let found = matches
+        VStack(spacing: 0) {
+            TextField("Type a document or folder", text: $query)
+                .textFieldStyle(.plain)
+                .appFont(16)
+                .focused($typing)
+                .onSubmit { if found.indices.contains(picked) { choose(found[picked].url) } }
+                .padding(14)
+            Divider()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(found.enumerated()), id: \.element.url) { i, item in
+                            Button { choose(item.url) } label: {
+                                Label {
+                                    Text(item.path)
+                                        .appFont(14)
+                                        .lineLimit(1)
+                                        .truncationMode(.head)
+                                } icon: {
+                                    Image(systemName: item.url.hasDirectoryPath ? "folder" : "doc.text")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(RoundedRectangle(cornerRadius: 6)
+                                    .fill(i == picked ? Color.secondary.opacity(0.18) : .clear))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .id(i)
+                        }
+                    }
+                    .padding(6)
+                }
+                .onChange(of: picked) { proxy.scrollTo($0) }
+            }
+            .overlay {
+                if found.isEmpty {
+                    Text("Nothing Matches").appFont(14).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: 480, height: 360)
+        .background(Color(nsColor: Theme.background))
+        .onChange(of: query) { _ in picked = 0 }
+        .onAppear {
+            typing = true
+            keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                switch event.keyCode {
+                case 125: picked = min(picked + 1, max(matches.count - 1, 0))
+                case 126: picked = max(picked - 1, 0)
+                case 53: dismiss()
+                default: return event
+                }
+                return nil
+            }
+        }
+        .onDisappear { keys.map(NSEvent.removeMonitor) }
+    }
+
+    private var matches: [(url: URL, path: String)] {
+        PathMatch.filter(state.items.map { (url: $0, path: PathMatch.path(of: $0, in: state.root)) }, by: query)
+    }
+
+    private func choose(_ url: URL) {
+        dismiss()
+        state.goTo(url)
     }
 }
 
@@ -329,6 +428,11 @@ struct SidebarView: View {
             .onDrop(of: [.fileURL], isTargeted: nil) { state.drop($0, into: state.root) }
             .onChange(of: state.renameTarget) { target in
                 if let target { withAnimation { proxy.scrollTo(target) } }
+            }
+            // A folder picked in Go To, once the folders above it have opened.
+            .onChange(of: state.selection) { selection in
+                guard let selection else { return }
+                DispatchQueue.main.async { withAnimation { proxy.scrollTo(selection) } }
             }
             // A new file or folder gets its row once the library's rescan lands.
             .onChange(of: state.tree) { _ in

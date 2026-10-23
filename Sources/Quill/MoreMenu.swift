@@ -78,15 +78,26 @@ enum MoreMenu {
     }
 }
 
+/// The sidebar's + menu, as in the iPhone library's.
+enum NewMenu {
+    static func make(_ state: AppState) -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(ActionItem("New File", symbol: "square.and.pencil") { state.newFile() })
+        menu.addItem(ActionItem("New Folder", symbol: "folder.badge.plus") { state.newFolder() })
+        return menu
+    }
+}
+
 /// A menu item that runs a closure.
 private final class ActionItem: NSMenuItem {
     private let handler: () -> Void
 
-    init(_ title: String, on: Bool = false, handler: @escaping () -> Void) {
+    init(_ title: String, on: Bool = false, symbol: String? = nil, handler: @escaping () -> Void) {
         self.handler = handler
         super.init(title: title, action: #selector(run), keyEquivalent: "")
         target = self
         state = on ? .on : .off
+        image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
     }
 
     required init(coder: NSCoder) { fatalError() }

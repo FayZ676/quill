@@ -74,6 +74,7 @@ private struct FolderView: View {
     let url: URL
     let isLibrary: Bool
     @State private var showingSettings = false
+    @State private var goingTo = false
 
     var body: some View {
         let nodes = state.children(of: url)
@@ -89,14 +90,23 @@ private struct FolderView: View {
                     BarButton("Back", "chevron.left") { state.goBack() }
                 }
             } trailing: {
-                BarButton("New Folder", "folder.badge.plus") { state.newFolder(in: url) }
-                BarButton("New Document", "square.and.pencil") { state.newFile(in: url) }
+                BarButton("Go To", "magnifyingglass") { goingTo = true }
+                Menu {
+                    Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: url) }
+                    Button("New Folder", systemImage: "folder.badge.plus") { state.newFolder(in: url) }
+                } label: {
+                    BarIcon(symbol: "plus")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .accessibilityLabel("New")
             }
             list(nodes)
         }
         .background(Color(uiColor: Theme.background).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingSettings) { SettingsView() }
+        .sheet(isPresented: $goingTo) { GoToSheet() }
     }
 
     private func list(_ nodes: [FileNode]) -> some View {
@@ -122,7 +132,7 @@ private struct FolderView: View {
                         Label { Text("No Documents").appFont(20, bold: true, relativeTo: .title3) }
                               icon: { Image(systemName: "doc.text") }
                     } description: {
-                        Text("Tap \(Image(systemName: "square.and.pencil")) to start writing.")
+                        Text("Tap \(Image(systemName: "plus")) to start writing.")
                             .appFont(17, relativeTo: .body)
                     }
                 }
@@ -217,75 +227,95 @@ private struct ItemMenu: View {
 /// type part of one to find it. Return takes the best match.
 private struct MoveSheet: View {
     @EnvironmentObject var state: AppState
-    @Environment(\.dismiss) private var dismiss
     let item: URL
+
+    var body: some View {
+        PathPicker(title: "Move “\(item.hasDirectoryPath ? item.lastPathComponent : FileNode.displayName(item))”",
+                   prompt: "Type a folder", empty: "No Matching Folder",
+                   items: state.moveTargets(for: item).map(\.url)) { state.move(item, into: $0) }
+    }
+}
+
+/// Goes straight to a document or folder, as Obsidian's quick switcher does: everything in
+/// the library by its path, and a field to type part of one to find it.
+private struct GoToSheet: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        PathPicker(title: "Go To", prompt: "Type a document or folder", empty: "Nothing Matches",
+                   items: state.items) { state.reveal($0) }
+    }
+}
+
+/// A sheet of the library's documents or folders by their paths, narrowed by what's typed,
+/// for picking one. Return takes the best match.
+private struct PathPicker: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let prompt: String
+    let empty: String
+    let items: [URL]
+    let pick: (URL) -> Void
     @State private var query = ""
     @State private var searching = false
 
     var body: some View {
-        let folders = matches
+        let found = matches
         // The system's bar and search field, so a long title truncates instead of crowding
         // Cancel, and the field rides the keyboard however the sheet arrives.
         NavigationStack {
-            List(Array(folders.enumerated()), id: \.element.url) { i, folder in
-                Button { move(into: folder.url) } label: {
-                    Text(folder.path)
-                        .appFont(17, relativeTo: .body)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+            List(Array(found.enumerated()), id: \.element.url) { i, item in
+                Button { choose(item.url) } label: {
+                    Label {
+                        Text(item.path)
+                            .appFont(17, relativeTo: .body)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    } icon: {
+                        Image(systemName: item.url.hasDirectoryPath ? "folder" : "doc.text")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                // The folder Return would pick.
+                // The one Return would pick.
                 .listRowBackground(i == 0 && !query.isEmpty ? Color.secondary.opacity(0.15) : .clear)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.never)
             .overlay {
-                if folders.isEmpty {
-                    Text("No Matching Folder").appFont(17, relativeTo: .body).foregroundStyle(.secondary)
+                if found.isEmpty {
+                    Text(empty).appFont(17, relativeTo: .body).foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Move “\(item.hasDirectoryPath ? item.lastPathComponent : FileNode.displayName(item))”")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .searchable(text: $query, isPresented: $searching, prompt: "Type a folder")
+            .searchable(text: $query, isPresented: $searching, prompt: prompt)
             .modifier(KeepBarWhileSearching())
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
-            .onSubmit(of: .search) { if let best = folders.first { move(into: best.url) } }
+            .onSubmit(of: .search) { if let best = found.first { choose(best.url) } }
         }
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(uiColor: Theme.background))
         .onAppear { searching = true }
     }
 
-    /// The folders the item can go to that match what's typed: those holding it as typed
-    /// first, then those holding its letters in order (“jo25” finds journal/2025).
     private var matches: [(url: URL, path: String)] {
-        let folders = state.moveTargets(for: item).map { (url: $0.url, path: state.path(of: $0.url)) }
-        let typed = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !typed.isEmpty else { return folders }
-        let exact = folders.filter { $0.path.lowercased().contains(typed) }
-        let loose = folders.filter { !$0.path.lowercased().contains(typed) && Self.inOrder(typed, in: $0.path.lowercased()) }
-        return exact + loose
+        PathMatch.filter(items.map { (url: $0, path: PathMatch.path(of: $0, in: state.root)) }, by: query)
     }
 
-    private static func inOrder(_ letters: String, in text: String) -> Bool {
-        var rest = Substring(letters)
-        for c in text where c == rest.first { rest = rest.dropFirst() }
-        return rest.isEmpty
-    }
-
-    private func move(into folder: URL) {
+    private func choose(_ url: URL) {
         dismiss()
-        state.move(item, into: folder)
+        pick(url)
     }
 }
 

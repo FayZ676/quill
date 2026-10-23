@@ -57,6 +57,8 @@ struct QuillCommands: Commands {
                 .keyboardShortcut("n")
             Button("New Folder") { state.newFolder() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            Button("Go To…") { state.goingTo = true }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
             Divider()
             Button("Open Folder…") { state.chooseRoot() }
                 .keyboardShortcut("o")

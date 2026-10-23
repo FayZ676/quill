@@ -32,6 +32,8 @@ final class AppState: ObservableObject {
 
     /// Whether the library sidebar is out. Animate changes so it slides.
     @Published var sidebarShown = true
+    /// The Go To panel, for finding a document or folder by its path.
+    @Published var goingTo = false
     @Published var renameTarget: URL?
     @Published var renameText = ""
     /// Folders open in the sidebar.
@@ -337,6 +339,21 @@ final class AppState: ObservableObject {
             nodes.filter(\.isDirectory).flatMap { [($0.url, depth)] + walk($0.children ?? [], depth + 1) }
         }
         return [(root, 0)] + walk(tree, 1)
+    }
+
+    /// Every folder and document in the library, depth-first, the library itself first.
+    var items: [URL] {
+        func walk(_ nodes: [FileNode]) -> [URL] { nodes.flatMap { [$0.url] + walk($0.children ?? []) } }
+        return [root] + walk(tree)
+    }
+
+    /// Opens a document, or picks out a folder in the sidebar with the folders above it open.
+    func goTo(_ url: URL) {
+        guard url.hasDirectoryPath else { return openNote(url) }
+        withAnimation { sidebarShown = true }
+        guard url != root else { return }
+        expandAncestors(of: url)
+        selection = url
     }
 
     func moveTargets(for item: URL) -> [(url: URL, depth: Int)] {

@@ -110,6 +110,12 @@ final class AppState: ObservableObject {
         return [(root, 0)] + walk(tree, 1)
     }
 
+    /// Every folder and document in the library, depth-first, the library itself first.
+    var items: [URL] {
+        func walk(_ nodes: [FileNode]) -> [URL] { nodes.flatMap { [$0.url] + walk($0.children ?? []) } }
+        return [root] + walk(tree)
+    }
+
     // MARK: Library
 
     /// Rescans the library in the background; the tree and everything built from it update
@@ -358,12 +364,6 @@ final class AppState: ObservableObject {
         folders.filter { $0.url != item.deletingLastPathComponent() && $0.url != item && !isInside($0.url, item) }
     }
 
-    /// Where `folder` sits in the library, as a path: "journal/2025", or "/" for the library itself.
-    func path(of folder: URL) -> String {
-        let base = root.standardizedFileURL.path, path = folder.standardizedFileURL.path
-        return path == base ? "/" : String(path.dropFirst(base.count + 1))
-    }
-
     func delete(_ url: URL) {
         flushSave()
         do { try Coordinated.delete(url) } catch { return present(error) }
@@ -380,6 +380,18 @@ final class AppState: ObservableObject {
         func urls(_ nodes: [FileNode]) -> [URL] { nodes.flatMap { [$0.url] + urls($0.children ?? []) } }
         let all = urls(tree)
         DispatchQueue.global(qos: .utility).async { Coordinated.announce(all) }
+    }
+
+    /// Opens a folder or document with the folders above it, so Back walks up its path.
+    func reveal(_ url: URL) {
+        flushSave()
+        var chain: [URL] = []
+        var dir = url
+        while isInside(dir, root) {
+            chain.insert(dir, at: 0)
+            dir = dir.deletingLastPathComponent()
+        }
+        pages = chain.map { Page($0) }
     }
 
     func focusEditor() {
@@ -420,13 +432,7 @@ final class AppState: ObservableObject {
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { return }
         let target = URL(fileURLWithPath: path, isDirectory: isDir.boolValue)
         guard isInside(target, root) else { return }
-        var chain = [target]
-        var dir = target.deletingLastPathComponent()
-        while isInside(dir, root) {
-            chain.insert(dir, at: 0)
-            dir = dir.deletingLastPathComponent()
-        }
-        pages = chain.map { Page($0) }
+        reveal(target)
     }
 
     /// Follows a renamed or moved item with the screens showing it or anything inside it.
