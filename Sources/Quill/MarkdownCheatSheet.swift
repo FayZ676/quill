@@ -59,7 +59,7 @@ struct CheatSheetButton: View {
                 .frame(minWidth: 20, minHeight: 18)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(Color.accentColor)
         .help("Markdown Cheat Sheet")
         .popover(isPresented: $showing, arrowEdge: .top) {
             CheatSheet()
