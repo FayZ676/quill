@@ -29,3 +29,17 @@ enum Theme {
     static let selection = dynamic(light: accent.withAlphaComponent(0.28),
                                     dark: accent.withAlphaComponent(0.45))
 }
+
+/// Light or dark for Quill alone, or whatever the Mac is set to.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system = "System", light = "Light", dark = "Dark"
+    var id: String { rawValue }
+
+    func apply() {
+        switch self {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}

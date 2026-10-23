@@ -28,6 +28,9 @@ final class AppState: ObservableObject {
     @Published var fontSize: Double { didSet { defaults.set(fontSize, forKey: "fontSize") } }
     @Published var editorFont: EditorFont { didSet { defaults.set(editorFont.rawValue, forKey: "editorFont") } }
     @Published var textInput: TextInput { didSet { textInput.save(defaults) } }
+    @Published var appearance: Appearance {
+        didSet { defaults.set(appearance.rawValue, forKey: "appearance"); appearance.apply() }
+    }
 
     /// Whether the library sidebar is out. Animate changes so it slides.
     @Published var sidebarShown = true
@@ -71,6 +74,7 @@ final class AppState: ObservableObject {
         let size = defaults.double(forKey: "fontSize")
         fontSize = size > 0 ? size : Self.defaultFontSize
         editorFont = EditorFont(rawValue: defaults.string(forKey: "editorFont") ?? "") ?? .duo
+        appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         textInput = TextInput.load(defaults)
         expanded = Set((defaults.stringArray(forKey: "expanded") ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) })
 

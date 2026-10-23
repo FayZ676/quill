@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         Fonts.registerBundled()
+        AppState.shared.appearance.apply()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -115,6 +116,10 @@ struct QuillCommands: Commands {
                 .keyboardShortcut("-")
             Button("Actual Size") { state.fontSize = AppState.defaultFontSize }
                 .keyboardShortcut("0")
+            Divider()
+            Picker("Appearance", selection: $state.appearance) {
+                ForEach(Appearance.allCases) { Text($0.rawValue).tag($0) }
+            }
             Divider()
         }
     }
