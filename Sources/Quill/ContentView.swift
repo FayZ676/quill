@@ -708,16 +708,19 @@ private struct WordCount: View {
 
     var body: some View {
         let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
-        Text("\(stats.words) words · \(minutes) min read")
-            .appFont(13)
-            .foregroundStyle(.tertiary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: Theme.background), in: Capsule())
-            .padding(.bottom, 12)
-            .opacity(chrome.hidden ? 0 : 1)
-            .animation(.easeInOut(duration: chrome.hidden ? 0.5 : 0.2), value: chrome.hidden)
-            .allowsHitTesting(false)
+        HStack(spacing: 8) {
+            Text("\(stats.words) words · \(minutes) min read")
+                .appFont(13)
+                .foregroundStyle(.tertiary)
+                .allowsHitTesting(false)
+            ShortcutsButton()
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .padding(.vertical, 5)
+        .background(Color(nsColor: Theme.background), in: Capsule())
+        .padding(.bottom, 12)
+        .modifier(FadesWithChrome(chrome: chrome))
     }
 }
 
