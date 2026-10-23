@@ -196,8 +196,11 @@ final class FocusTextView: NSTextView {
     var openNoteLink: ((String) -> Void)?
     /// The library's notes, for suggesting them as a link is typed.
     var linkResolver: () -> LinkResolver? = { nil }
+    /// The font chosen for the page, for the suggestion list to match.
+    var editorFont = EditorFont.duo
     private let suggester = LinkSuggester()
-    private lazy var suggestionView = NSHostingView(rootView: suggestionList())
+    /// Made the first time there are notes to suggest.
+    private var suggestionView: NSHostingView<LinkSuggestionList>?
 
     override func mouseDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command),
@@ -272,29 +275,29 @@ final class FocusTextView: NSTextView {
         showSuggestions()
     }
 
-    private func suggestionList() -> LinkSuggestionList {
-        LinkSuggestionList(items: suggester.items, selected: suggester.selected, font: AppState.shared.editorFont) {
-            [weak self] i in self?.chooseSuggestion(i)
-        }
-    }
-
     /// Puts the list just under the start of the name being typed, or takes it away.
     private func showSuggestions() {
         guard suggester.isShowing, let query = suggester.query, let lm = layoutManager, let container = textContainer else {
-            suggestionView.removeFromSuperview()
+            suggestionView?.removeFromSuperview()
             return
         }
-        suggestionView.rootView = suggestionList()
-        let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: max(0, query.location - 2), length: 0),
-                                   actualCharacterRange: nil)
-        var line = lm.boundingRect(forGlyphRange: NSRange(location: glyphs.location, length: 1), in: container)
+        let list = LinkSuggestionList(items: suggester.items, selected: suggester.selected, font: editorFont) {
+            [weak self] i in self?.chooseSuggestion(i)
+        }
+        let view = suggestionView ?? NSHostingView(rootView: list)
+        suggestionView = view
+        view.rootView = list
+        // The `[[` opening the link.
+        let glyph = lm.glyphIndexForCharacter(at: query.location - 2)
+        var line = lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
         line.origin.x += textContainerOrigin.x
         line.origin.y += textContainerOrigin.y
-        let size = NSSize(width: LinkSuggestionList.width, height: LinkSuggestionList.height(for: suggester.items.count))
-        // The list's shadow margin sits outside its card, so line the card up with the text.
-        let x = min(line.minX - 12, bounds.width - size.width)
-        suggestionView.frame = NSRect(x: max(0, x), y: line.maxY - 6, width: size.width, height: size.height)
-        if suggestionView.superview == nil { addSubview(suggestionView) }
+        let size = LinkSuggestionList.size(for: suggester.items.count)
+        // The shadow margin sits outside the card, so line the card up with the text.
+        let margin = LinkSuggestionList.margin
+        let x = min(line.minX - margin, bounds.width - size.width)
+        view.frame = NSRect(x: max(0, x), y: line.maxY + 6 - margin, width: size.width, height: size.height)
+        if view.superview == nil { addSubview(view) }
     }
 
     // MARK: Text input

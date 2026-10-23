@@ -111,10 +111,12 @@ enum MarkdownEdits {
         let ns = string as NSString
         guard let start = openLink(in: ns, before: caret) else { return nil }
         let query = NSRange(location: start, length: caret - start)
-        guard ns.rangeOfCharacter(from: CharacterSet(charactersIn: "|#^"), range: query).location == NSNotFound
-        else { return nil }
+        guard ns.rangeOfCharacter(from: afterName, range: query).location == NSNotFound else { return nil }
         return query
     }
+
+    /// What ends a link's note name: a heading, a block, or the text shown in its place.
+    private static let afterName = CharacterSet(charactersIn: "|#^")
 
     /// Puts `link` in place of the name being typed (`query`, from `linkQuery`), closes the
     /// link if it isn't yet, and leaves the caret after it.

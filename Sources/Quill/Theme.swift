@@ -19,7 +19,7 @@ enum Theme {
     /// A `[[link]]`'s text, in the accent as Obsidian draws links; fainter for a note not
     /// written yet.
     static let link = accent
-    static let unwritten = dynamic(light: accent.withAlphaComponent(0.55), dark: accent.withAlphaComponent(0.6))
+    static let unwritten = accent.withAlphaComponent(0.55)
     static let dimmed = dynamic(light: gray(0.80), dark: gray(0.30))
     static let codeBackground = dynamic(light: gray(0, 0.045), dark: gray(1, 0.06))
     /// The app accent (vermilion). Defined once, as AccentColor in Resources/Assets.xcassets;

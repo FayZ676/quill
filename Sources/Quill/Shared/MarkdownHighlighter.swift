@@ -10,7 +10,8 @@ extension NSAttributedString.Key {
 }
 
 /// Styles Markdown in place, iA-style: markup characters are greyed out but stay visible,
-/// headings stay the body size and hang their `#`s into the left margin.
+/// headings stay the body size and hang their `#`s into the left margin. A `[[link]]`'s
+/// markup is the exception: it's marked for LinkMarkupHider to hide, as Obsidian does.
 final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     var fonts = FontSet(.duo, size: Fonts.defaultSize) { didSet { rebuildBase() } }
     /// Off where the screen is too narrow to give up a margin to heading marks.

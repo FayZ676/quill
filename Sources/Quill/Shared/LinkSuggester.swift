@@ -1,10 +1,9 @@
-import SwiftUI
+import Foundation
 
 /// The notes offered while a `[[link]]` is typed, as in Obsidian: a short list that narrows
 /// with each letter. Up and down move through it, Return or Tab takes a note, Escape closes it.
 final class LinkSuggester {
     struct Item: Equatable {
-        let url: URL
         /// What goes between the brackets.
         let link: String
         let name: String
@@ -33,8 +32,8 @@ final class LinkSuggester {
         let typed = (text as NSString).substring(with: query)
         let fresh = resolver.suggestions(for: typed).map { url in
             let folder = LinkResolver.relativePath(url.deletingLastPathComponent(), from: resolver.root)
-            return Item(url: url, link: resolver.linkText(for: url), name: FileNode.displayName(url),
-                        folder: folder.isEmpty || folder.hasPrefix("..") ? "" : folder)
+            return Item(link: resolver.linkText(for: url), name: FileNode.displayName(url),
+                        folder: folder.hasPrefix("..") ? "" : folder)
         }
         if fresh != items {
             items = fresh
@@ -66,49 +65,4 @@ final class LinkSuggester {
         query = nil
         dismissedAt = nil
     }
-}
-
-/// The suggestions as a small floating list under the link being typed.
-struct LinkSuggestionList: View {
-    let items: [LinkSuggester.Item]
-    let selected: Int
-    let font: EditorFont
-    let pick: (Int) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                HStack(spacing: 12) {
-                    Text(item.name)
-                        .font(.quill(font, size: 13))
-                        .foregroundStyle(Color(platform: Theme.text))
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if !item.folder.isEmpty {
-                        Text(item.folder)
-                            .font(.quill(font, size: 11))
-                            .foregroundStyle(Color(platform: Theme.markup))
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 26)
-                .background(i == selected ? Color(platform: Theme.accent).opacity(0.18) : .clear,
-                            in: RoundedRectangle(cornerRadius: 5))
-                .contentShape(Rectangle())
-                .onTapGesture { pick(i) }
-            }
-        }
-        .padding(4)
-        .frame(width: 300, alignment: .leading)
-        .background(Color(platform: Theme.background), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(platform: Theme.markup).opacity(0.35)))
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-        .padding(12)
-    }
-
-    /// Height of the list for `count` items, its margin for the shadow included.
-    static func height(for count: Int) -> CGFloat { CGFloat(count) * 26 + 8 + 24 }
-    static let width: CGFloat = 300 + 24
 }

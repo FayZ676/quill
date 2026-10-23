@@ -7,6 +7,7 @@ struct LinkResolver {
     let root: URL
     let notes: [URL]
     private let byName: [String: [URL]]
+    private let byPath: [String: URL]
 
     init(_ tree: [FileNode], root: URL) {
         func walk(_ nodes: [FileNode]) -> [URL] {
@@ -15,6 +16,7 @@ struct LinkResolver {
         self.root = root
         notes = walk(tree)
         byName = Dictionary(grouping: notes) { FileNode.displayName($0).lowercased() }
+        byPath = Dictionary(notes.map { ($0.standardizedFileURL.path, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
     /// The note `target` names, as written in a link in `source`.
@@ -27,7 +29,7 @@ struct LinkResolver {
             let direct = base.appendingPathComponent(name).standardizedFileURL
             let fromRoot = root.appendingPathComponent(name).standardizedFileURL
             for candidate in [direct, direct.appendingPathExtension("md"), fromRoot, fromRoot.appendingPathExtension("md")] {
-                if let match = notes.first(where: { $0.standardizedFileURL.path == candidate.path }) { return match }
+                if let match = byPath[candidate.path] { return match }
             }
         }
         let leaf = FileNode.displayName(URL(fileURLWithPath: name)).lowercased()
@@ -44,6 +46,38 @@ struct LinkResolver {
         zip(a, b.deletingLastPathComponent().pathComponents).prefix { $0 == $1 }.count
     }
 
+    /// Whether `target`, in a link in `source`, names a note that exists. `[[#Heading]]`
+    /// points into `source` itself, so it always does.
+    func exists(_ target: String, from source: URL?) -> Bool {
+        Self.split(target).name.isEmpty || resolve(target, from: source) != nil
+    }
+
+    /// Where to create the note a link to a missing note names, as Obsidian does: at the top
+    /// of the library, or in the folder the link names. Nil when the link has no name or
+    /// points outside the library.
+    func newNote(for target: String) -> URL? {
+        let name = Self.split(target).name
+        guard !name.isEmpty else { return nil }
+        let path = FileNode.markdownExtensions.contains((name as NSString).pathExtension.lowercased()) ? name : name + ".md"
+        let url = root.appendingPathComponent(path, isDirectory: false).standardizedFileURL
+        guard url.path.hasPrefix(root.standardizedFileURL.path + "/") else { return nil }
+        return url
+    }
+
+    /// Where each note goes when the note or folder at `old` moves to `new`.
+    func moves(from old: URL, to new: URL) -> [URL: URL] {
+        let prefix = old.path + "/"
+        var moves: [URL: URL] = [:]
+        for note in notes {
+            if note.path == old.path {
+                moves[note] = new
+            } else if note.path.hasPrefix(prefix) {
+                moves[note] = new.appendingPathComponent(String(note.path.dropFirst(prefix.count)), isDirectory: false)
+            }
+        }
+        return moves
+    }
+
     /// How a link to `note` is written: its name, or, when another note shares the name,
     /// its path from the library, as Obsidian writes them.
     func linkText(for note: URL) -> String {
@@ -58,8 +92,8 @@ struct LinkResolver {
     /// then with a word starting with it, then containing it, then holding its letters in order.
     func suggestions(for query: String, limit: Int = 8) -> [URL] {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
-        func rank(_ url: URL) -> Int? {
-            let name = FileNode.displayName(url).lowercased()
+        func rank(_ name: String) -> Int? {
+            let name = name.lowercased()
             if q.isEmpty || name.hasPrefix(q) { return 0 }
             if name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).contains(where: { $0.hasPrefix(q) }) { return 1 }
             if name.contains(q) { return 2 }
@@ -67,13 +101,15 @@ struct LinkResolver {
             for c in name where c == rest.first { rest = rest.dropFirst() }
             return rest.isEmpty ? 3 : nil
         }
-        return notes.compactMap { url in rank(url).map { (url, $0) } }
-            .sorted { a, b in
-                a.1 != b.1 ? a.1 < b.1
-                    : FileNode.displayName(a.0).localizedStandardCompare(FileNode.displayName(b.0)) == .orderedAscending
-            }
-            .prefix(limit)
-            .map(\.0)
+        return notes.compactMap { url -> (url: URL, name: String, rank: Int)? in
+            let name = FileNode.displayName(url)
+            return rank(name).map { (url, name, $0) }
+        }
+        .sorted { a, b in
+            a.rank != b.rank ? a.rank < b.rank : a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+        .prefix(limit)
+        .map(\.url)
     }
 
     // MARK: Moves
@@ -162,18 +198,6 @@ struct LinkResolver {
               let path = decoded.split(separator: "#", maxSplits: 1).first.map(String.init),
               FileNode.markdownExtensions.contains((path as NSString).pathExtension.lowercased()) else { return nil }
         return path
-    }
-
-    /// What each link in `text` points at, as written, leaving out code and web links.
-    static func targets(in text: String) -> [String] {
-        let ns = text as NSString
-        let plain = codeSpan.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length),
-                                                      withTemplate: "")
-        let range = NSRange(location: 0, length: (plain as NSString).length)
-        func captures(_ regex: NSRegularExpression) -> [String] {
-            regex.matches(in: plain, range: range).map { (plain as NSString).substring(with: $0.range(at: 1)) }
-        }
-        return captures(wikiLink) + captures(markdownLink).compactMap(localPath)
     }
 
     /// The line of the heading called `name` in `text`, ignoring case, for opening a

@@ -80,11 +80,7 @@ final class EditorCoordinator: NSObject, UITextViewDelegate {
         nc.addObserver(self, selector: #selector(appBecameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(flush), name: UIApplication.willResignActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(noteRewritten), name: AppState.noteRewritten, object: nil)
-        highlighter.linkExists = { [weak self] target in
-            guard let self else { return true }
-            // `[[#Heading]]` points into this note.
-            return LinkResolver.split(target).name.isEmpty || self.state.links.resolve(target, from: self.url) != nil
-        }
+        highlighter.linkExists = { [weak self] in self?.state.links.exists($0, from: self?.url) ?? true }
     }
 
     func attach(_ tv: FocusTextView) {

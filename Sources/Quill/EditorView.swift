@@ -101,11 +101,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         tv.textInputChanged = { [weak self] in self?.state.textInput = $0 }
         tv.openNoteLink = { [weak self] in self?.state.openLink($0) }
         tv.linkResolver = { [weak self] in self?.state.links }
-        highlighter.linkExists = { [weak self] target in
-            guard let self else { return true }
-            // `[[#Heading]]` points into this note.
-            return LinkResolver.split(target).name.isEmpty || self.state.links.resolve(target, from: self.url) != nil
-        }
+        highlighter.linkExists = { [weak self] in self?.state.links.exists($0, from: self?.url) ?? true }
         state.showPendingHeading = { [weak self] in self?.showPendingHeading() }
         state.reloadEditor = { [weak self] in self?.reload($0) }
     }
@@ -118,6 +114,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             let fonts = FontSet(state.editorFont, size: CGFloat(state.fontSize))
             highlighter.fonts = fonts
             tv.fonts = fonts
+            tv.editorFont = state.editorFont
             tv.typingAttributes = highlighter.baseAttributes
             if let storage = tv.textStorage { highlighter.highlightAll(storage) }
             tv.updateLayout()

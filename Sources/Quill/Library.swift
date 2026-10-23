@@ -145,16 +145,13 @@ final class AppState: ObservableObject {
     /// folder the link names.
     func openLink(_ target: String) {
         flushSave()
-        let name = LinkResolver.split(target).name
         pendingHeading = LinkResolver.heading(in: target)
         // `[[#Heading]]` points into this note.
-        if name.isEmpty { return showPendingHeading() }
+        if LinkResolver.split(target).name.isEmpty { return showPendingHeading() }
         if let url = links.resolve(target, from: openFile) {
             return url == openFile ? showPendingHeading() : openNote(url)
         }
-        let path = FileNode.markdownExtensions.contains((name as NSString).pathExtension.lowercased()) ? name : name + ".md"
-        let url = root.appendingPathComponent(path, isDirectory: false).standardizedFileURL
-        guard isInside(url, root) else { return }
+        guard let url = links.newNote(for: target) else { return }
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data().write(to: url, options: .withoutOverwriting)
@@ -174,10 +171,7 @@ final class AppState: ObservableObject {
     /// After a note or folder moves from `old` to `new`, points every link at where its note
     /// is now, as Obsidian does. `before` is the library as it was.
     private func updateLinks(_ before: LinkResolver, moved old: URL, to new: URL) {
-        var moves: [URL: URL] = [:]
-        for note in before.notes {
-            if let moved = rebase(note, from: old, to: new) { moves[note] = moved }
-        }
+        let moves = before.moves(from: old, to: new)
         guard !moves.isEmpty else { return }
         for note in before.notes {
             let now = moves[note] ?? note
