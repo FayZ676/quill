@@ -95,6 +95,7 @@ final class FocusTextView: NSTextView {
 
     func updateFocus() {
         guard let lm = layoutManager else { return }
+        (lm as? MarkdownLayoutManager)?.reveal(around: selectedRange())
         let length = (string as NSString).length
         let all = NSRange(location: 0, length: length)
         lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: all)
@@ -185,6 +186,18 @@ final class FocusTextView: NSTextView {
         apply(MarkdownEdits.link(in: string, selection: selectedRange()))
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        if taskBox(at: event) != nil { NSCursor.pointingHand.set() }
+    }
+
+    private func taskBox(at event: NSEvent) -> NSRange? {
+        guard let lm = layoutManager as? MarkdownLayoutManager, let container = textContainer else { return nil }
+        let point = convert(event.locationInWindow, from: nil)
+        return lm.taskBox(at: NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y),
+                          in: container)
+    }
+
     private func apply(_ edit: TextEdit) {
         insertText(edit.text, replacementRange: edit.range)
         if let selection = edit.selection { setSelectedRange(selection) }
@@ -202,7 +215,11 @@ final class FocusTextView: NSTextView {
     /// Made the first time there are notes to suggest.
     private var suggestionView: NSHostingView<LinkSuggestionList>?
 
+    /// A click on a task's box ticks it, without moving the caret; ⌘-click opens a link.
     override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 1, let box = taskBox(at: event) {
+            return apply(MarkdownEdits.tick(box, in: string, selection: selectedRange()))
+        }
         if event.modifierFlags.contains(.command),
            let target = noteLink(at: convert(event.locationInWindow, from: nil)) {
             openNoteLink?(target)

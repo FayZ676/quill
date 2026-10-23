@@ -10,8 +10,8 @@ extension NSAttributedString.Key {
 }
 
 /// Styles Markdown in place, iA-style: markup characters are greyed out but stay visible,
-/// headings stay the body size and hang their `#`s into the left margin. A `[[link]]`'s
-/// markup is the exception: it's marked for LinkMarkupHider to hide, as Obsidian does.
+/// headings stay the body size and hang their `#`s into the left margin. Links are the
+/// exception: their markup is marked for MarkdownLayoutManager to hide until the caret comes.
 final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     var fonts = FontSet(.duo, size: Fonts.defaultSize) { didSet { rebuildBase() } }
     /// Off where the screen is too narrow to give up a margin to heading marks.
@@ -55,6 +55,14 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         let ns = storage.string as NSString
         let fences = fenceLines(storage.string)
         var target = ns.paragraphRange(for: range)
+        // The lines on either side too: an underline (`===`, `---`) makes the line above
+        // it a heading.
+        if NSMaxRange(target) < ns.length {
+            target = NSUnionRange(target, ns.paragraphRange(for: NSRange(location: NSMaxRange(target), length: 0)))
+        }
+        if target.location > 0 {
+            target = NSUnionRange(target, ns.paragraphRange(for: NSRange(location: target.location - 1, length: 0)))
+        }
         // Opening or closing a code fence restyles everything after it.
         let edited = ns.substring(with: target)
         if fences.count != fenceCount || edited.contains("```") || edited.contains("~~~") {
@@ -73,6 +81,9 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
     private static let heading = re(#"^(#{1,6}[ \t]+)(.*)$"#, .anchorsMatchLines)
     private static let listMarker = re(#"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?"#, .anchorsMatchLines)
     private static let quote = re(#"^([ \t]*>[ \t]?)(.*)$"#, .anchorsMatchLines)
+    private static let underline = re(#"^[ \t]{0,3}(?:=+|-{2,})[ \t]*$"#, .anchorsMatchLines)
+    private static let taskBox = re(#"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(\[[ xX]\])[ \t]"#, .anchorsMatchLines)
+    private static let checkedTask = re(#"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[xX]\][ \t]+(.*)$"#, .anchorsMatchLines)
     private static let rule = re(#"^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$"#, .anchorsMatchLines)
     private static let fence = re(#"^[ \t]{0,3}(?:```|~~~).*$"#, .anchorsMatchLines)
     private static let bold = re(#"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"#)
@@ -113,11 +124,24 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             let markerWidth = fonts.width(ns.substring(with: m.range))
             paragraph({ $0.headIndent = hang + markerWidth }, m.range)
         }
+        each(Self.taskBox) { m in ts.addAttribute(.markdownTaskBox, value: true, range: m.range(at: 1)) }
         each(Self.quote) { m in
             dim(m.range(at: 1))
             addTraits(ts, m.range(at: 2), italic: true)
         }
-        each(Self.rule) { m in dim(m.range) }
+        each(Self.underline) { m in
+            guard let above = paragraphAbove(m.range, ns) else { return }
+            ts.addAttribute(.font, value: fonts.bold, range: above)
+            dim(m.range)
+        }
+        each(Self.rule) { m in
+            dim(m.range)
+            let underlines = ns.substring(with: m.range(at: 1)) == "-" && paragraphAbove(m.range, ns) != nil
+            if !underlines {
+                ts.addAttribute(.markdownRule, value: true, range: m.range)
+                paragraph({ $0.alignment = .center }, m.range)
+            }
+        }
         each(Self.bold) { m in
             addTraits(ts, m.range(at: 2), bold: true)
             dimMarkers(m, dim)
@@ -132,7 +156,17 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         }
         each(Self.link) { m in
             dim(m.range)
-            ts.addAttribute(.foregroundColor, value: Theme.text, range: m.range(at: 1))
+            let text = m.range(at: 1)
+            ts.addAttribute(.foregroundColor, value: Theme.text, range: text)
+            // Out of the way until the caret comes to it, leaving the text underlined.
+            // An image, or a link with no text, has nothing to show in its place.
+            guard text.length > 0, ns.character(at: m.range.location) != 0x21 else { return }
+            ts.addAttribute(.markdownLink, value: m.range.location, range: m.range)
+            ts.addAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: Theme.markup],
+                             range: text)
+            ts.addAttribute(.markdownConceal, value: true, range: NSRange(location: m.range.location, length: 1))
+            ts.addAttribute(.markdownConceal, value: true,
+                            range: NSRange(location: NSMaxRange(text), length: NSMaxRange(m.range) - NSMaxRange(text)))
         }
         each(LinkResolver.wikiLink) { m in
             dim(m.range)
@@ -142,19 +176,27 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
             let written = linkExists?(target) ?? true
             ts.addAttribute(.foregroundColor, value: written ? Theme.link : Theme.unwritten, range: shown)
             ts.addAttribute(.noteLink, value: target, range: m.range)
-            // Everything around the shown text, for LinkMarkupHider to hide.
-            ts.addAttribute(.linkMarkup, value: true,
+            // Everything around the shown text is out of the way until the caret comes to it,
+            // as with other links (and as Obsidian does): `[[Note|these words]]` reads "these words".
+            ts.addAttribute(.markdownLink, value: m.range.location, range: m.range)
+            ts.addAttribute(.markdownConceal, value: true,
                             range: NSRange(location: m.range.location, length: shown.location - m.range.location))
-            ts.addAttribute(.linkMarkup, value: true,
+            ts.addAttribute(.markdownConceal, value: true,
                             range: NSRange(location: NSMaxRange(shown), length: NSMaxRange(m.range) - NSMaxRange(shown)))
         }
         each(Self.code) { m in
-            ts.addAttributes(codeAttributes, range: m.range)
             // A link written in code is only text.
-            ts.removeAttribute(.noteLink, range: m.range)
-            ts.removeAttribute(.linkMarkup, range: m.range)
+            for key in [NSAttributedString.Key.markdownLink, .markdownConceal, .underlineStyle, .noteLink] {
+                ts.removeAttribute(key, range: m.range)
+            }
+            ts.addAttributes(codeAttributes, range: m.range)
             dim(NSRange(location: m.range.location, length: 1))
             dim(NSRange(location: NSMaxRange(m.range) - 1, length: 1))
+        }
+        // Done items fade back and are struck through, links and code included.
+        each(Self.checkedTask) { m in
+            dim(m.range)
+            ts.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: m.range(at: 1))
         }
 
         // Fenced blocks win over everything matched inside them.
@@ -178,6 +220,20 @@ final class MarkdownHighlighter: NSObject, NSTextStorageDelegate {
         // (UIKit falls back at draw time.)
         ts.fixAttributes(in: range)
         #endif
+    }
+
+    /// The line above `range` if it's plain text, which an underline (`===`, `---`) beneath
+    /// turns into a heading. Excludes the newline.
+    private func paragraphAbove(_ range: NSRange, _ ns: NSString) -> NSRange? {
+        guard range.location > 0 else { return nil }
+        let above = ns.paragraphRange(for: NSRange(location: range.location - 1, length: 0))
+        let line = ns.substring(with: above)
+        let text = line.trimmingCharacters(in: .newlines)
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let all = NSRange(location: 0, length: (line as NSString).length)
+        guard [Self.heading, Self.listMarker, Self.quote, Self.rule, Self.underline, Self.fence]
+            .allSatisfy({ $0.firstMatch(in: line, range: all) == nil }) else { return nil }
+        return NSRange(location: above.location, length: (text as NSString).length)
     }
 
     /// Dims the opening and closing marker (capture group 1) of an inline span.
