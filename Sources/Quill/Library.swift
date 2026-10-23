@@ -34,6 +34,8 @@ final class AppState: ObservableObject {
     @Published var sidebarShown = true
     /// The Go To panel, for finding a document or folder by its path.
     @Published var goingTo = false
+    /// The file or folder the New sheet is naming and placing.
+    @Published var newItem: NewItem?
     @Published var renameTarget: URL?
     @Published var renameText = ""
     /// Folders open in the sidebar.
@@ -54,8 +56,6 @@ final class AppState: ObservableObject {
     /// Installed by the editor; rereads the open note, now at the given URL, after Quill
     /// has rewritten it.
     var reloadEditor: (URL) -> Void = { _ in }
-    /// A just-created file is being named; the editor takes over once that's done.
-    private var namingNewFile = false
     private var watcher: FolderWatcher?
     private var recheck: DispatchWorkItem?
     private static let scanQueue = DispatchQueue(label: "Quill.scan", qos: .userInitiated)
@@ -277,27 +277,31 @@ final class AppState: ObservableObject {
 
     // MARK: File operations
 
-    func newFile(in dir: URL? = nil) {
-        let url = uniqueURL(in: dir ?? targetDirectory, base: "Untitled", ext: "md", isDirectory: false)
-        do { try Data().write(to: url) } catch { return present(error) }
-        reloadTree()
-        expandAncestors(of: url)
-        selection = url
-        beginRename(url)
-        namingNewFile = true
-    }
+    func newFile(in dir: URL? = nil) { newItem = NewItem(isFolder: false, dir: dir ?? targetDirectory) }
 
-    func newFolder(in dir: URL? = nil) {
-        let url = uniqueURL(in: dir ?? targetDirectory, base: "New Folder", ext: nil, isDirectory: true)
-        do { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false) } catch { return present(error) }
+    func newFolder(in dir: URL? = nil) { newItem = NewItem(isFolder: true, dir: dir ?? targetDirectory) }
+
+    /// Makes the New sheet's file or folder, named `typed`, in `dir`, and picks it out in the
+    /// sidebar. A file opens, ready to write in.
+    func create(_ item: NewItem, named typed: String, in dir: URL) {
+        let name = item.fileName(typed)
+        let url = uniqueURL(in: dir, base: name.base, ext: name.ext, isDirectory: item.isFolder)
+        do {
+            if item.isFolder {
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            } else {
+                try Data().write(to: url)
+            }
+        } catch { return present(error) }
         reloadTree()
         expandAncestors(of: url)
         selection = url
-        beginRename(url)
+        guard !item.isFolder else { return }
+        // Once the sheet has gone.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.focusEditor() }
     }
 
     func beginRename(_ url: URL) {
-        namingNewFile = false
         renameText = url.hasDirectoryPath ? url.lastPathComponent : FileNode.displayName(url)
         renameTarget = url
     }
@@ -305,14 +309,12 @@ final class AppState: ObservableObject {
     func cancelRename() {
         guard renameTarget != nil else { return }
         renameTarget = nil
-        renameEnded()
     }
 
     func commitRename() {
         guard let old = renameTarget else { return }
         renameTarget = nil
         rename(old, to: renameText)
-        renameEnded()
     }
 
     func rename(_ old: URL, to newName: String) {
@@ -414,13 +416,6 @@ final class AppState: ObservableObject {
     }
 
     // MARK: Private
-
-    private func renameEnded() {
-        guard namingNewFile else { return }
-        namingNewFile = false
-        // Let the sidebar drop its text field before the editor takes focus.
-        DispatchQueue.main.async { [weak self] in self?.focusEditor() }
-    }
 
     private func expandAncestors(of url: URL) {
         var folders: [URL] = []

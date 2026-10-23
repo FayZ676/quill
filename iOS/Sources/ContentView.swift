@@ -17,13 +17,13 @@ struct ContentView: View {
                 state.flushSave()
             }
         }
-        .alert(state.namingNewFile ? "Name Your Document" : "Rename", isPresented: Binding(
+        .alert("Rename", isPresented: Binding(
             get: { state.renameTarget != nil },
             set: { if !$0 { state.cancelRename() } }
         )) {
             TextField("Name", text: $state.renameText)
             Button("Cancel", role: .cancel) { state.cancelRename() }
-            Button(state.namingNewFile ? "Done" : "Rename") { state.commitRename() }
+            Button("Rename") { state.commitRename() }
         }
         .confirmationDialog(state.deleteTarget.map { "Delete “\(name(of: $0))”?" } ?? "",
                             isPresented: Binding(get: { state.deleteTarget != nil },
@@ -43,6 +43,7 @@ struct ContentView: View {
                                     set: { if !$0 { state.moveTarget = nil } })) {
             if let item = state.moveTarget { MoveSheet(item: item) }
         }
+        .sheet(item: $state.newItem) { NewItemSheet(item: $0) }
         .sheet(isPresented: $state.choosingLibrary) {
             LibraryChoice().interactiveDismissDisabled()
         }
@@ -244,6 +245,73 @@ private struct GoToSheet: View {
     var body: some View {
         PathPicker(title: "Go To", prompt: "Type a document or folder", empty: "Nothing Matches",
                    items: state.items) { state.reveal($0) }
+    }
+}
+
+/// Names a new document or folder and says where it goes: the folder you're in, to begin
+/// with, or any other, found as in Move To.
+private struct NewItemSheet: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    let item: NewItem
+    @State private var name = ""
+    @State private var dir: URL
+    @State private var choosingFolder = false
+    @FocusState private var naming: Bool
+
+    init(item: NewItem) {
+        self.item = item
+        _dir = State(initialValue: item.dir)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField(item.placeholder, text: $name)
+                    .appFont(17, relativeTo: .body)
+                    .focused($naming)
+                    .submitLabel(.done)
+                    .onSubmit(create)
+                    .listRowBackground(Color.secondary.opacity(0.1))
+                Button { choosingFolder = true } label: {
+                    LabeledContent {
+                        Text(PathMatch.path(of: dir, in: state.root))
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    } label: {
+                        Label("In", systemImage: "folder").foregroundStyle(.primary)
+                    }
+                    .appFont(17, relativeTo: .body)
+                }
+                .listRowBackground(Color.secondary.opacity(0.1))
+            }
+            .scrollContentBackground(.hidden)
+            .navigationTitle(item.isFolder ? "New Folder" : "New Document")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create", action: create)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color(uiColor: Theme.background))
+        .sheet(isPresented: $choosingFolder) {
+            PathPicker(title: "Choose a Folder", prompt: "Type a folder", empty: "No Matching Folder",
+                       items: state.folders.map(\.url)) { dir = $0 }
+        }
+        // Back from choosing a folder, the name is still to type.
+        .onChange(of: choosingFolder) { _, choosing in if !choosing { naming = true } }
+        .onAppear { naming = true }
+    }
+
+    private func create() {
+        dismiss()
+        state.create(item, named: name, in: dir)
     }
 }
 

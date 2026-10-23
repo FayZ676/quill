@@ -46,8 +46,8 @@ final class AppState: ObservableObject {
 
     @Published var renameTarget: URL?
     @Published var renameText = ""
-    /// The rename is naming a just-created document; the editor takes over once it's done.
-    @Published private(set) var namingNewFile = false
+    /// The document or folder the New sheet is naming and placing.
+    @Published var newItem: NewItem?
     @Published var deleteTarget: URL?
     /// The document or folder the Move To sheet is finding a folder for.
     @Published var moveTarget: URL?
@@ -251,27 +251,26 @@ final class AppState: ObservableObject {
 
     // MARK: File operations
 
-    func newFile(in dir: URL) {
-        let url = uniqueURL(in: dir, base: "Untitled", ext: "md", isDirectory: false)
-        do { try Coordinated.createFile(url) } catch { return present(error) }
-        reloadTree()
-        pages.append(Page(url))
-        // After the editor has slid in.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-            self?.beginRename(url)
-            self?.namingNewFile = true
-        }
-    }
+    func newFile(in dir: URL) { newItem = NewItem(isFolder: false, dir: dir) }
 
-    func newFolder(in dir: URL) {
-        let url = uniqueURL(in: dir, base: "New Folder", ext: nil, isDirectory: true)
-        do { try Coordinated.createDirectory(url) } catch { return present(error) }
+    func newFolder(in dir: URL) { newItem = NewItem(isFolder: true, dir: dir) }
+
+    /// Makes the New sheet's document or folder, named `typed`, in `dir`. A document opens,
+    /// ready to write in.
+    func create(_ item: NewItem, named typed: String, in dir: URL) {
+        let name = item.fileName(typed)
+        let url = uniqueURL(in: dir, base: name.base, ext: name.ext, isDirectory: item.isFolder)
+        do {
+            if item.isFolder { try Coordinated.createDirectory(url) } else { try Coordinated.createFile(url) }
+        } catch { return present(error) }
         reloadTree()
-        beginRename(url)
+        guard !item.isFolder else { return }
+        if dir == (pages.last?.url ?? root) { pages.append(Page(url)) } else { reveal(url) }
+        // After the editor has slid in.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.focusEditor() }
     }
 
     func beginRename(_ url: URL) {
-        namingNewFile = false
         renameText = url.hasDirectoryPath ? url.lastPathComponent : FileNode.displayName(url)
         renameTarget = url
     }
@@ -279,14 +278,12 @@ final class AppState: ObservableObject {
     func cancelRename() {
         guard renameTarget != nil else { return }
         renameTarget = nil
-        renameEnded()
     }
 
     func commitRename() {
         guard let old = renameTarget else { return }
         renameTarget = nil
         rename(old, to: renameText)
-        renameEnded()
     }
 
     func rename(_ old: URL, to newName: String) {
@@ -413,12 +410,6 @@ final class AppState: ObservableObject {
         choosingLibrary = false
         pages = []
         reloadTree()
-    }
-
-    private func renameEnded() {
-        guard namingNewFile else { return }
-        namingNewFile = false
-        DispatchQueue.main.async { [weak self] in self?.focusEditor() }
     }
 
     private func rememberLocation() {

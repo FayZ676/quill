@@ -74,7 +74,10 @@ struct ContentView: View {
                 .onChange(of: geometry.safeAreaInsets.top) { buttonStripHeight = $0 }
         })
         .background(Color(nsColor: Theme.background).ignoresSafeArea())
-        .sheet(isPresented: $state.goingTo) { GoToPanel() }
+        .sheet(isPresented: $state.goingTo) {
+            PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items) { state.goTo($0) }
+        }
+        .sheet(item: $state.newItem) { NewItemPanel(item: $0) }
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back. A turn later, as `$hidden` fires before `hidden` changes:
         // sliding the sidebar right away redraws the bars while they still read as shown,
@@ -268,11 +271,78 @@ private struct GoToButton: View {
     }
 }
 
-/// Finds a document or folder by typing part of its path, as Obsidian's quick switcher does.
-/// The arrow keys move through the matches, Return goes to the one picked, Escape closes.
-private struct GoToPanel: View {
+/// Names a new file or folder and says where it goes: the folder picked out in the sidebar,
+/// to begin with, or any other, found by typing part of its path.
+private struct NewItemPanel: View {
     @EnvironmentObject var state: AppState
     @Environment(\.dismiss) private var dismiss
+    let item: NewItem
+    @State private var name = ""
+    @State private var dir: URL
+    @State private var choosingFolder = false
+    @FocusState private var naming: Bool
+
+    init(item: NewItem) {
+        self.item = item
+        _dir = State(initialValue: item.dir)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(item.isFolder ? "New Folder" : "New File").appFont(15, bold: true)
+            TextField(item.placeholder, text: $name)
+                .textFieldStyle(.roundedBorder)
+                .appFont(14)
+                .focused($naming)
+                .onSubmit(create)
+            HStack(spacing: 8) {
+                Text("In").appFont(14).foregroundStyle(.secondary)
+                Button { choosingFolder = true } label: {
+                    Label {
+                        Text(PathMatch.path(of: dir, in: state.root))
+                            .appFont(14)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                    } icon: {
+                        Image(systemName: "folder").foregroundStyle(Color.accentColor)
+                    }
+                }
+                .help("Choose a Folder")
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Create", action: create)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+        .background(Color(nsColor: Theme.background))
+        .sheet(isPresented: $choosingFolder) {
+            PathPanel(prompt: "Type a folder", empty: "No Matching Folder", items: state.folders.map(\.url)) { dir = $0 }
+        }
+        // Back from choosing a folder, the name is still to type.
+        .onChange(of: choosingFolder) { choosing in if !choosing { naming = true } }
+        .onAppear { naming = true }
+    }
+
+    private func create() {
+        dismiss()
+        state.create(item, named: name, in: dir)
+    }
+}
+
+/// Finds a document or folder by typing part of its path, as Obsidian's quick switcher does.
+/// The arrow keys move through the matches, Return takes the one picked, Escape closes.
+private struct PathPanel: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    let prompt: String
+    let empty: String
+    let items: [URL]
+    let pick: (URL) -> Void
     @State private var query = ""
     @State private var picked = 0
     @State private var keys: Any?
@@ -281,7 +351,7 @@ private struct GoToPanel: View {
     var body: some View {
         let found = matches
         VStack(spacing: 0) {
-            TextField("Type a document or folder", text: $query)
+            TextField(prompt, text: $query)
                 .textFieldStyle(.plain)
                 .appFont(16)
                 .focused($typing)
@@ -319,7 +389,7 @@ private struct GoToPanel: View {
             }
             .overlay {
                 if found.isEmpty {
-                    Text("Nothing Matches").appFont(14).foregroundStyle(.secondary)
+                    Text(empty).appFont(14).foregroundStyle(.secondary)
                 }
             }
         }
@@ -342,12 +412,12 @@ private struct GoToPanel: View {
     }
 
     private var matches: [(url: URL, path: String)] {
-        PathMatch.filter(state.items.map { (url: $0, path: PathMatch.path(of: $0, in: state.root)) }, by: query)
+        PathMatch.filter(items.map { (url: $0, path: PathMatch.path(of: $0, in: state.root)) }, by: query)
     }
 
     private func choose(_ url: URL) {
         dismiss()
-        state.goTo(url)
+        pick(url)
     }
 }
 
