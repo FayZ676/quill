@@ -396,6 +396,7 @@ private struct NodeRow: View {
                 Label {
                     TextField("Name", text: $state.renameText)
                         .textFieldStyle(.plain)
+                        .appFont(14)
                         .focused($editing)
                         .onSubmit { state.commitRename() }
                         .onExitCommand { state.cancelRename() }

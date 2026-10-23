@@ -14,9 +14,10 @@ struct QuillApp: App {
         Window("Quill", id: "main") {
             ContentView()
                 .environmentObject(state)
-                // All of Quill's own text in the chosen font, not just the page.
-                .environment(\.editorFont, state.editorFont)
+                // All of Quill's own text in the chosen font, not just the page. The font
+                // goes inside the choice, so it reads the choice rather than the default.
                 .appFont(13)
+                .environment(\.editorFont, state.editorFont)
                 .tint(Color(nsColor: Theme.accent))
                 .frame(minWidth: 640, minHeight: 420)
         }
