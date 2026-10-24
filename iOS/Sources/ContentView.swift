@@ -143,8 +143,9 @@ private struct LibraryView: View {
                 }
                 // The group's own row, which the label's setting doesn't reach.
                 .listRowSeparator(.hidden)
-                // Its arrow gray, like the bar's icons, rather than the accent.
-                .tint(.secondary)
+                // Its arrow the gray of the count beside it, rather than the accent. A color,
+                // since `.secondary` as a tint comes out near white in dark mode.
+                .tint(Color(uiColor: .secondaryLabel))
             } else {
                 // A plain button rather than a NavigationLink: no chevron, unlike a folder.
                 item(Button { state.pages.append(Page(node.url)) } label: { row(node) }, node)
