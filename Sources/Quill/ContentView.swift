@@ -405,12 +405,13 @@ private struct PathPanel: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .id(i)
                         }
                     }
                     .padding(6)
                 }
-                .onChange(of: picked) { proxy.scrollTo($0) }
+                // By URL: an index as a row's id leaves the rows showing what they matched
+                // before, when the query narrows them.
+                .onChange(of: picked) { if found.indices.contains($0) { proxy.scrollTo(found[$0].url) } }
             }
             .overlay {
                 if found.isEmpty {
