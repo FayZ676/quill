@@ -7,7 +7,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack(path: $state.pages) {
-            LibraryView()
+            FolderView(url: state.root, isLibrary: true)
                 .navigationDestination(for: Page.self) { PageView(page: $0) }
         }
         .onChange(of: phase) { _, phase in
@@ -60,6 +60,8 @@ private struct PageView: View {
     var body: some View {
         if page.isGraph {
             GraphScreen()
+        } else if page.url.hasDirectoryPath {
+            FolderView(url: page.url, isLibrary: false)
         } else {
             EditorScreen(page: page)
         }
@@ -68,24 +70,31 @@ private struct PageView: View {
 
 // MARK: Library
 
-/// The whole library as one tree, folders collapsed until tapped open, as in the Mac sidebar.
-/// The system's disclosure groups draw and indent it.
-private struct LibraryView: View {
+private struct FolderView: View {
     @EnvironmentObject var state: AppState
+    let url: URL
+    let isLibrary: Bool
     @State private var showingSettings = false
     @State private var goingTo = false
 
     var body: some View {
-        let nodes = state.tree
+        let nodes = state.children(of: url)
         VStack(spacing: 0) {
-            Header {
-                BarButton("Settings", "gearshape") { showingSettings = true }
-                BarButton("Graph", "point.3.connected.trianglepath.dotted") { state.showGraph() }
+            // A folder is named in the bar, like a document, with a slash to mark it a folder.
+            // The library needs no name.
+            Header(title: isLibrary ? "" : url.lastPathComponent + " /",
+                   titleAction: isLibrary ? nil : { state.beginRename(url) }) {
+                if isLibrary {
+                    BarButton("Settings", "gearshape") { showingSettings = true }
+                    BarButton("Graph", "point.3.connected.trianglepath.dotted") { state.showGraph() }
+                } else {
+                    BarButton("Back", "chevron.left") { state.goBack() }
+                }
             } trailing: {
                 BarButton("Go To", "magnifyingglass") { goingTo = true }
                 Menu {
-                    Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: state.root) }
-                    Button("New Folder", systemImage: "folder.badge.plus") { state.newFolder(in: state.root) }
+                    Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: url) }
+                    Button("New Folder", systemImage: "folder.badge.plus") { state.newFolder(in: url) }
                 } label: {
                     BarIcon(symbol: "plus")
                 }
@@ -114,7 +123,7 @@ private struct LibraryView: View {
         .overlay {
             if nodes.isEmpty && !state.loading {
                 // Their text set here: the view's own fonts would win over inherited ones.
-                if state.downloading > 0 {
+                if state.downloading > 0 && isLibrary {
                     ContentUnavailableView {
                         Label { Text("Downloading from iCloud…").appFont(20, bold: true, relativeTo: .title3) }
                               icon: { Image(systemName: "icloud.and.arrow.down") }
@@ -132,52 +141,32 @@ private struct LibraryView: View {
         }
     }
 
-    /// The rows for `nodes`, each folder a disclosure group holding its own.
-    private func rows(_ nodes: [FileNode]) -> AnyView {
-        AnyView(ForEach(nodes) { node in
-            if node.isDirectory {
-                DisclosureGroup(isExpanded: expansion(of: node.url)) {
-                    rows(node.children ?? [])
-                } label: {
-                    item(row(node), node)
-                }
-                // The group's own row, which the label's setting doesn't reach.
-                .listRowSeparator(.hidden)
-            } else {
-                // A plain button rather than a NavigationLink: no chevron, unlike a folder.
-                item(Button { state.pages.append(Page(node.url)) } label: { row(node) }, node)
-            }
-        })
-    }
-
-    private func row(_ node: FileNode) -> some View {
-        Label {
-            HStack {
-                Text(node.name)
-                    .lineLimit(1)
-                    .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
-                Spacer()
-                // Beside the folder's disclosure arrow.
-                if state.syncStates[node.url] == nil {
-                    if node.isDirectory {
-                        ItemCount(count: node.children?.count)
-                            .appFont(15, relativeTo: .subheadline)
+    private func rows(_ nodes: [FileNode]) -> some View {
+        ForEach(nodes) { node in
+            // The system's link, with its chevron, onto the stack the app's pages live in.
+            NavigationLink(value: Page(node.url)) {
+                Label {
+                    HStack {
+                        Text(node.name)
+                            .lineLimit(1)
+                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                        Spacer()
+                        if state.syncStates[node.url] == nil {
+                            if node.isDirectory {
+                                ItemCount(count: node.children?.count)
+                                    .appFont(15, relativeTo: .subheadline)
+                            }
+                        } else {
+                            SyncBadge(sync: state.syncStates[node.url])
+                        }
                     }
-                } else {
-                    SyncBadge(sync: state.syncStates[node.url])
+                } icon: {
+                    Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                        .foregroundStyle(Color.accentColor)
                 }
+                .contentShape(Rectangle())
+                .background(PageColorRow())
             }
-        } icon: {
-            Image(systemName: node.isDirectory ? "folder" : "doc.text")
-                .foregroundStyle(Color.accentColor)
-        }
-        .contentShape(Rectangle())
-        .background(PageColorRow())
-    }
-
-    /// A row with everything you can do to its document or folder.
-    private func item(_ row: some View, _ node: FileNode) -> some View {
-        row
             .foregroundStyle(.primary)
             .contextMenu { ItemMenu(url: node.url) }
             .swipeActions {
@@ -190,13 +179,7 @@ private struct LibraryView: View {
                     .tint(.gray)
             }
             .listRowSeparator(.hidden)
-    }
-
-    private func expansion(of url: URL) -> Binding<Bool> {
-        Binding(get: { state.expanded.contains(url) },
-                set: { open in
-                    if open { state.expanded.insert(url) } else { state.expanded.remove(url) }
-                })
+        }
     }
 }
 
@@ -231,11 +214,6 @@ private struct ItemMenu: View {
     let url: URL
 
     var body: some View {
-        if url.hasDirectoryPath {
-            Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: url) }
-            Button("New Folder", systemImage: "folder.badge.plus") { state.newFolder(in: url) }
-            Divider()
-        }
         Button("Rename", systemImage: "pencil") { state.beginRename(url) }
         Button("Move To…", systemImage: "folder") { state.moveTarget = url }
         if !url.hasDirectoryPath {
