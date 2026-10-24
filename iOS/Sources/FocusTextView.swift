@@ -49,19 +49,20 @@ final class FocusTextView: UITextView {
 
     /// UIKit's caret blinks on its own clock and runs the full line height, line spacing
     /// included. Like the Mac app's, this one is a glowing layer that fades. UIKit still
-    /// shows and hides its own cursor view as it likes, so that view is masked out entirely.
-    private func hideSystemCaret() {
+    /// shows and hides its own cursor views as it likes, so they're masked out entirely,
+    /// except while the space bar is held: the floating cursor is one of them.
+    private func maskSystemCursors(_ masked: Bool) {
         func cursors(in view: UIView) -> [UIView] {
             view.subviews.flatMap { $0 is any UITextCursorView ? [$0] : cursors(in: $0) }
         }
-        for cursor in cursors(in: self) where cursor.layer.mask == nil {
-            cursor.layer.mask = CALayer()
+        for cursor in cursors(in: self) where (cursor.layer.mask == nil) == masked {
+            cursor.layer.mask = masked ? CALayer() : nil
         }
     }
 
     /// Puts the caret where the selection is, or hides it when there's a selection or no focus.
     func updateCaret() {
-        hideSystemCaret()
+        maskSystemCursors(!floatingCursor)
         guard isFirstResponder, !floatingCursor, selectedRange.length == 0, let end = selectedTextRange?.end else {
             return caretView.hide()
         }
@@ -81,6 +82,7 @@ final class FocusTextView: UITextView {
         floatingCursor = true
         caretView.hide()
         super.beginFloatingCursor(at: point)
+        maskSystemCursors(false)
     }
 
     override func endFloatingCursor() {
