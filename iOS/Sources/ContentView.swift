@@ -143,8 +143,9 @@ private struct FolderView: View {
 
     private func rows(_ nodes: [FileNode]) -> some View {
         ForEach(nodes) { node in
-            // The system's link, with its chevron, onto the stack the app's pages live in.
-            NavigationLink(value: Page(node.url)) {
+            // A plain button rather than a NavigationLink: no chevron, like the Mac sidebar.
+            // It pushes onto the same navigation stack.
+            Button { state.pages.append(Page(node.url)) } label: {
                 Label {
                     HStack {
                         Text(node.name)
