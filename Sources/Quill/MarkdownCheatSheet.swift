@@ -61,10 +61,9 @@ private let entries = sections.flatMap { section in
 /// The button by the word count; opens the cheat sheet.
 struct CheatSheetButton: View {
     @EnvironmentObject var state: AppState
-    @State private var showing = false
 
     var body: some View {
-        Button { showing.toggle() } label: {
+        Button { state.showingCheatSheet = true } label: {
             Image(systemName: "textformat")
                 .font(.system(size: 13))
                 .frame(minWidth: 20, minHeight: 18)
@@ -72,13 +71,17 @@ struct CheatSheetButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(Color.accentColor)
         .help("Markdown Cheat Sheet")
-        .sheet(isPresented: $showing) {
-            SearchPanel(prompt: "Search, like “bold” or “list”", height: 440, matches: matches, section: \.section) {
-                EntryRow(entry: $0)
-            }
-        }
         // Back to writing once the sheet is put away.
-        .onChange(of: showing) { if !$0 { state.focusEditor() } }
+        .onChange(of: state.showingCheatSheet) { if !$0 { state.focusEditor() } }
+    }
+}
+
+/// How to write each kind of formatting, searchable.
+struct CheatSheet: View {
+    var body: some View {
+        SearchPanel(prompt: "Search, like “bold” or “list”", height: 440, matches: matches, section: \.section) {
+            EntryRow(entry: $0)
+        }
     }
 
     /// The entries that hold every word typed.

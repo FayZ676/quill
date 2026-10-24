@@ -74,9 +74,11 @@ struct ContentView: View {
                 .onChange(of: geometry.safeAreaInsets.top) { buttonStripHeight = $0 }
         })
         .background(Color(nsColor: Theme.background).ignoresSafeArea())
-        .sheet(isPresented: $state.goingTo) {
+        .searchPanel(isPresented: $state.goingTo) {
             PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items) { state.goTo($0) }
         }
+        // From here rather than the button, so it opens just as Go To does.
+        .searchPanel(isPresented: $state.showingCheatSheet) { CheatSheet() }
         .sheet(item: $state.newItem) { NewItemPanel(item: $0) }
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back. A turn later, as `$hidden` fires before `hidden` changes:

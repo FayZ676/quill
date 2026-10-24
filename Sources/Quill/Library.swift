@@ -34,6 +34,8 @@ final class AppState: ObservableObject {
     @Published var sidebarShown = true
     /// The Go To panel, for finding a document or folder by its path.
     @Published var goingTo = false
+    /// The Markdown cheat sheet, opened from the button by the word count.
+    @Published var showingCheatSheet = false
     /// The file or folder the New sheet is naming and placing.
     @Published var newItem: NewItem?
     @Published var renameTarget: URL?

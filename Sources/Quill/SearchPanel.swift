@@ -2,9 +2,11 @@ import SwiftUI
 
 /// A box to type in over the list it narrows, as Obsidian's quick switcher is: Go To, choosing
 /// a folder, the cheat sheet. The arrow keys move through the matches, Return takes the one
-/// picked, Escape closes.
+/// picked, Escape closes. Floats over the window with `searchPanel(isPresented:)`, or goes
+/// in a sheet where it's opened from one.
 struct SearchPanel<Item: Identifiable, Row: View>: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.closeSearchPanel) private var closeFloating
     let prompt: String
     let empty: String
     let height: CGFloat
@@ -91,7 +93,7 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
                 switch event.keyCode {
                 case 125: picked = min(picked + 1, max(matches(query).count - 1, 0))
                 case 126: picked = max(picked - 1, 0)
-                case 53: dismiss()
+                case 53: close()
                 default: return event
                 }
                 return nil
@@ -102,7 +104,46 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
 
     private func choose(_ item: Item) {
         guard let pick else { return }
-        dismiss()
+        close()
         pick(item)
+    }
+
+    /// Floating over the window, or as a sheet, as it's shown.
+    private func close() {
+        if let closeFloating { closeFloating() } else { dismiss() }
+    }
+}
+
+extension View {
+    /// Floats a search panel near the top of the window, as Spotlight does; Escape or a click
+    /// anywhere else puts it away.
+    func searchPanel<Panel: View>(isPresented: Binding<Bool>, @ViewBuilder panel: @escaping () -> Panel) -> some View {
+        overlay {
+            if isPresented.wrappedValue {
+                ZStack(alignment: .top) {
+                    // All but clear, so it still takes the click.
+                    Color.black.opacity(0.001)
+                        .onTapGesture { isPresented.wrappedValue = false }
+                    panel()
+                        .environment(\.closeSearchPanel) { isPresented.wrappedValue = false }
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3)))
+                        .shadow(color: .black.opacity(0.3), radius: 24, y: 8)
+                        .padding(.top, 60)
+                }
+                .ignoresSafeArea()
+            }
+        }
+    }
+}
+
+private struct CloseSearchPanelKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+private extension EnvironmentValues {
+    var closeSearchPanel: (() -> Void)? {
+        get { self[CloseSearchPanelKey.self] }
+        set { self[CloseSearchPanelKey.self] = newValue }
     }
 }
