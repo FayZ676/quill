@@ -69,6 +69,7 @@ private struct PageView: View {
 // MARK: Library
 
 /// The whole library as one tree, folders collapsed until tapped open, as in the Mac sidebar.
+/// The system's disclosure groups draw and indent it.
 private struct LibraryView: View {
     @EnvironmentObject var state: AppState
     @State private var showingSettings = false
@@ -102,7 +103,7 @@ private struct LibraryView: View {
 
     private func list(_ nodes: [FileNode]) -> some View {
         List {
-            rows(nodes, depth: 0)
+            rows(nodes)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -131,82 +132,71 @@ private struct LibraryView: View {
         }
     }
 
-    /// The rows for `nodes` and, under each open folder, its own, indented a step deeper.
-    private func rows(_ nodes: [FileNode], depth: Int) -> AnyView {
+    /// The rows for `nodes`, each folder a disclosure group holding its own.
+    private func rows(_ nodes: [FileNode]) -> AnyView {
         AnyView(ForEach(nodes) { node in
-            row(node, depth: depth)
-            if node.isDirectory && state.expanded.contains(node.url) {
-                rows(node.children ?? [], depth: depth + 1)
+            if node.isDirectory {
+                DisclosureGroup(isExpanded: expansion(of: node.url)) {
+                    rows(node.children ?? [])
+                } label: {
+                    item(row(node), node)
+                }
+                // The group's own row, which the label's setting doesn't reach.
+                .listRowSeparator(.hidden)
+            } else {
+                // A plain button rather than a NavigationLink: no chevron, unlike a folder.
+                item(Button { state.pages.append(Page(node.url)) } label: { row(node) }, node)
             }
         })
     }
 
-    private func row(_ node: FileNode, depth: Int) -> some View {
-        let open = node.isDirectory && state.expanded.contains(node.url)
-        // A plain button rather than a NavigationLink: no chevron, like the Mac sidebar.
-        return Button { tap(node) } label: {
-            HStack(spacing: 12) {
-                // Room for the chevron on every row, so names line up within a level. Regular
-                // weight and secondary, like the bar's icons; as far from the folder as the
-                // folder is from its name.
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(open ? 90 : 0))
-                    .frame(width: 16, alignment: .leading)
-                    .opacity(node.isDirectory ? 1 : 0)
-                    .accessibilityHidden(true)
-                Label {
-                    HStack {
-                        Text(node.name)
-                            .lineLimit(1)
-                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
-                        Spacer()
-                        if state.syncStates[node.url] == nil {
-                            if node.isDirectory {
-                                ItemCount(count: node.children?.count)
-                                    .appFont(15, relativeTo: .subheadline)
-                            }
-                        } else {
-                            SyncBadge(sync: state.syncStates[node.url])
-                        }
+    private func row(_ node: FileNode) -> some View {
+        Label {
+            HStack {
+                Text(node.name)
+                    .lineLimit(1)
+                    .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                Spacer()
+                // Beside the folder's disclosure arrow.
+                if state.syncStates[node.url] == nil {
+                    if node.isDirectory {
+                        ItemCount(count: node.children?.count)
+                            .appFont(15, relativeTo: .subheadline)
                     }
-                } icon: {
-                    Image(systemName: node.isDirectory ? "folder" : "doc.text")
-                        .foregroundStyle(Color.accentColor)
+                } else {
+                    SyncBadge(sync: state.syncStates[node.url])
                 }
             }
-            .padding(.leading, CGFloat(depth) * 20)
-            .contentShape(Rectangle())
-            .background(PageColorRow())
+        } icon: {
+            Image(systemName: node.isDirectory ? "folder" : "doc.text")
+                .foregroundStyle(Color.accentColor)
         }
-        .accessibilityValue(node.isDirectory ? (open ? "Expanded" : "Collapsed") : "")
-        .foregroundStyle(.primary)
-        .contextMenu { ItemMenu(url: node.url) }
-        .swipeActions {
-            // Icons alone: with their names too, iOS pads them into wide, fat pills.
-            Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = node.url }
-                .labelStyle(.iconOnly)
-                .tint(.red)
-            Button("Rename", systemImage: "pencil") { state.beginRename(node.url) }
-                .labelStyle(.iconOnly)
-                .tint(.gray)
-        }
-        .listRowSeparator(.hidden)
-        // The chevrons in line with the gear above them.
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 20))
+        .contentShape(Rectangle())
+        .background(PageColorRow())
     }
 
-    /// A folder opens or closes in place; a document opens in the editor.
-    private func tap(_ node: FileNode) {
-        guard node.isDirectory else { return state.pages.append(Page(node.url)) }
-        withAnimation(.snappy(duration: 0.25)) {
-            if state.expanded.contains(node.url) {
-                state.expanded.remove(node.url)
-            } else {
-                state.expanded.insert(node.url)
+    /// A row with everything you can do to its document or folder.
+    private func item(_ row: some View, _ node: FileNode) -> some View {
+        row
+            .foregroundStyle(.primary)
+            .contextMenu { ItemMenu(url: node.url) }
+            .swipeActions {
+                // Icons alone: with their names too, iOS pads them into wide, fat pills.
+                Button("Delete", systemImage: "trash", role: .destructive) { state.deleteTarget = node.url }
+                    .labelStyle(.iconOnly)
+                    .tint(.red)
+                Button("Rename", systemImage: "pencil") { state.beginRename(node.url) }
+                    .labelStyle(.iconOnly)
+                    .tint(.gray)
             }
-        }
+            .listRowSeparator(.hidden)
+    }
+
+    private func expansion(of url: URL) -> Binding<Bool> {
+        Binding(get: { state.expanded.contains(url) },
+                set: { open in
+                    if open { state.expanded.insert(url) } else { state.expanded.remove(url) }
+                })
     }
 }
 
