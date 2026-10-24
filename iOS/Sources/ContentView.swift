@@ -145,30 +145,33 @@ private struct LibraryView: View {
         let open = node.isDirectory && state.expanded.contains(node.url)
         // A plain button rather than a NavigationLink: no chevron, like the Mac sidebar.
         return Button { tap(node) } label: {
-            Label {
-                HStack {
-                    Text(node.name)
-                        .lineLimit(1)
-                        .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
-                    Spacer()
-                    if state.syncStates[node.url] == nil {
-                        if node.isDirectory {
-                            ItemCount(count: node.children?.count)
-                                .appFont(15, relativeTo: .subheadline)
+            HStack(spacing: 12) {
+                // Room for the chevron on every row, so names line up within a level. Regular
+                // weight and secondary, like the bar's icons; as far from the folder as the
+                // folder is from its name.
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                    .frame(width: 16, alignment: .leading)
+                    .opacity(node.isDirectory ? 1 : 0)
+                    .accessibilityHidden(true)
+                Label {
+                    HStack {
+                        Text(node.name)
+                            .lineLimit(1)
+                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                        Spacer()
+                        if state.syncStates[node.url] == nil {
+                            if node.isDirectory {
+                                ItemCount(count: node.children?.count)
+                                    .appFont(15, relativeTo: .subheadline)
+                            }
+                        } else {
+                            SyncBadge(sync: state.syncStates[node.url])
                         }
-                    } else {
-                        SyncBadge(sync: state.syncStates[node.url])
                     }
-                }
-            } icon: {
-                HStack(spacing: 6) {
-                    // Room for the chevron on every row, so names line up within a level.
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                        .opacity(node.isDirectory ? 1 : 0)
-                        .accessibilityHidden(true)
+                } icon: {
                     Image(systemName: node.isDirectory ? "folder" : "doc.text")
                         .foregroundStyle(Color.accentColor)
                 }
@@ -190,6 +193,8 @@ private struct LibraryView: View {
                 .tint(.gray)
         }
         .listRowSeparator(.hidden)
+        // The chevrons in line with the gear above them.
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 20))
     }
 
     /// A folder opens or closes in place; a document opens in the editor.
