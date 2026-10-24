@@ -21,6 +21,7 @@ final class AppState: ObservableObject {
     static let shared = AppState()
 
     private let defaults = UserDefaults.standard
+    private lazy var recents = Recents(defaults)
     private static let localLibrary = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
     @Published private(set) var root: URL
@@ -110,10 +111,11 @@ final class AppState: ObservableObject {
         return [(root, 0)] + walk(tree, 1)
     }
 
-    /// Every folder and document in the library, depth-first, the library itself first.
+    /// Every folder and document in the library: the notes opened most recently first, then
+    /// the rest depth-first, the library itself first.
     var items: [URL] {
         func walk(_ nodes: [FileNode]) -> [URL] { nodes.flatMap { [$0.url] + walk($0.children ?? []) } }
-        return [root] + walk(tree)
+        return recents.ordered([root] + walk(tree))
     }
 
     // MARK: Library
@@ -414,6 +416,7 @@ final class AppState: ObservableObject {
 
     private func rememberLocation() {
         defaults.set(pages.last?.url.path, forKey: "lastLocation")
+        if let page = pages.last, !page.isGraph, !page.url.hasDirectoryPath { recents.viewed(page.url) }
     }
 
     /// Reopens the folder or document Quill was showing, with the folders above it.
@@ -439,6 +442,7 @@ final class AppState: ObservableObject {
             pages.removeSubrange(i...)
         }
         if let first = pages.first, !first.isGraph, !isInside(first.url, root) { pages = [] }
+        recents.relocate { rebase($0, from: old, to: new) }
         rememberLocation()
     }
 

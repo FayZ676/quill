@@ -44,6 +44,7 @@ final class AppState: ObservableObject {
     /// Kept separate so per-keystroke word counts don't re-render the sidebar.
     let stats = Stats()
     let chrome = ChromeFader()
+    private lazy var recents = Recents(defaults)
     weak var textView: FocusTextView?
     /// Installed by the editor; writes any unsaved text to disk.
     var flushSave: () -> Void = {}
@@ -343,10 +344,11 @@ final class AppState: ObservableObject {
         return [(root, 0)] + walk(tree, 1)
     }
 
-    /// Every folder and document in the library, depth-first, the library itself first.
+    /// Every folder and document in the library: the notes opened most recently first, then
+    /// the rest depth-first, the library itself first.
     var items: [URL] {
         func walk(_ nodes: [FileNode]) -> [URL] { nodes.flatMap { [$0.url] + walk($0.children ?? []) } }
-        return [root] + walk(tree)
+        return recents.ordered([root] + walk(tree))
     }
 
     /// Opens a document, or picks out a folder in the sidebar with the folders above it open.
@@ -435,12 +437,14 @@ final class AppState: ObservableObject {
         }
         if let sel = selection, let moved = rebase(sel, from: old, to: new) { selection = moved }
         expanded = Set(expanded.map { rebase($0, from: old, to: new) ?? $0 })
+        recents.relocate { rebase($0, from: old, to: new) }
     }
 
     private func selectionChanged() {
         guard let url = selection, !url.hasDirectoryPath else { return }
         // Picking a note, even the one that was open, leaves the graph for the editor.
         showingGraph = false
+        recents.viewed(url)
         guard url != openFile else { return }
         flushSave()
         openFile = url
