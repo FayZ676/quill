@@ -10,6 +10,8 @@ private struct Entry: Identifiable {
     var shortcut: String?
     /// Other words someone might search for it by.
     var also = ""
+    /// The heading it's listed under.
+    var section = ""
 
     var id: String { title }
 }
@@ -47,7 +49,16 @@ private let sections = [
     ]),
 ]
 
-/// The button by the word count; opens the cheat sheet above it.
+/// Every entry, under its heading.
+private let entries = sections.flatMap { section in
+    section.entries.map { entry in
+        var entry = entry
+        entry.section = section.title
+        return entry
+    }
+}
+
+/// The button by the word count; opens the cheat sheet.
 struct CheatSheetButton: View {
     @EnvironmentObject var state: AppState
     @State private var showing = false
@@ -61,93 +72,21 @@ struct CheatSheetButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(Color.accentColor)
         .help("Markdown Cheat Sheet")
-        .popover(isPresented: $showing, arrowEdge: .top) {
-            CheatSheet()
+        .sheet(isPresented: $showing) {
+            SearchPanel(prompt: "Search, like “bold” or “list”", height: 440, matches: matches, section: \.section) {
+                EntryRow(entry: $0)
+            }
         }
         // Back to writing once the sheet is put away.
         .onChange(of: showing) { if !$0 { state.focusEditor() } }
     }
-}
 
-private struct CheatSheet: View {
-    @State private var query = ""
-
-    /// The sections with only the entries that hold every word typed.
-    private var matches: [EntrySection] {
+    /// The entries that hold every word typed.
+    private func matches(_ query: String) -> [Entry] {
         let words = query.lowercased().split(separator: " ")
-        guard !words.isEmpty else { return sections }
-        return sections.compactMap { section in
-            let entries = section.entries.filter { entry in
-                let haystack = [entry.title, entry.markdown ?? "", entry.also, section.title].joined(separator: " ").lowercased()
-                return words.allSatisfy(haystack.contains)
-            }
-            return entries.isEmpty ? nil : EntrySection(title: section.title, entries: entries)
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            SearchField(text: $query, prompt: "Search, like “bold” or “list”")
-                .padding(12)
-
-            Divider()
-
-            let matches = matches
-            if matches.isEmpty {
-                Text("Nothing Matches")
-                    .appFont(13)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(matches) { section in
-                            VStack(alignment: .leading, spacing: 7) {
-                                Text(section.title)
-                                    .appFont(11, bold: true)
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-                                ForEach(section.entries) { EntryRow(entry: $0) }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                }
-            }
-        }
-        .frame(width: 360, height: 440)
-    }
-}
-
-/// AppKit's search field, for its magnifier and clear button; takes the keyboard when shown.
-private struct SearchField: NSViewRepresentable {
-    @Binding var text: String
-    let prompt: String
-
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
-
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
-        field.placeholderString = prompt
-        field.delegate = context.coordinator
-        field.focusRingType = .none
-        DispatchQueue.main.async { field.window?.makeFirstResponder(field) }
-        return field
-    }
-
-    func updateNSView(_ field: NSSearchField, context: Context) {
-        if field.stringValue != text { field.stringValue = text }
-    }
-
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-        let text: Binding<String>
-
-        init(text: Binding<String>) { self.text = text }
-
-        func controlTextDidChange(_ note: Notification) {
-            guard let field = note.object as? NSSearchField else { return }
-            text.wrappedValue = field.stringValue
+        return entries.filter { entry in
+            let haystack = [entry.title, entry.markdown ?? "", entry.also, entry.section].joined(separator: " ").lowercased()
+            return words.allSatisfy(haystack.contains)
         }
     }
 }
@@ -157,7 +96,7 @@ private struct EntryRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(entry.title).appFont(13)
+            Text(entry.title).appFont(14)
             Spacer(minLength: 12)
             if let markdown = entry.markdown {
                 Text(markdown)

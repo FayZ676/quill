@@ -359,91 +359,37 @@ private struct FieldBox: ViewModifier {
     }
 }
 
-/// Finds a document or folder by typing part of its path, as Obsidian's quick switcher does.
-/// The arrow keys move through the matches, Return takes the one picked, Escape closes.
+/// Finds a document or folder by typing part of its path.
 private struct PathPanel: View {
     @EnvironmentObject var state: AppState
-    @Environment(\.dismiss) private var dismiss
     let prompt: String
     let empty: String
     let items: [URL]
     let pick: (URL) -> Void
-    @State private var query = ""
-    @State private var picked = 0
-    @State private var keys: Any?
-    @FocusState private var typing: Bool
+
+    private struct Found: Identifiable {
+        let url: URL
+        let path: String
+        var id: URL { url }
+    }
 
     var body: some View {
-        let found = matches
-        VStack(spacing: 0) {
-            TextField(prompt, text: $query)
-                .textFieldStyle(.plain)
-                .appFont(16)
-                .focused($typing)
-                .onSubmit { if found.indices.contains(picked) { choose(found[picked].url) } }
-                .padding(14)
-            Divider()
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(found.enumerated()), id: \.element.url) { i, item in
-                            Button { choose(item.url) } label: {
-                                Label {
-                                    Text(item.path)
-                                        .appFont(14)
-                                        .lineLimit(1)
-                                        .truncationMode(.head)
-                                } icon: {
-                                    Image(systemName: item.url.hasDirectoryPath ? "folder" : "doc.text")
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(RoundedRectangle(cornerRadius: 6)
-                                    .fill(i == picked ? Color.secondary.opacity(0.18) : .clear))
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(6)
-                }
-                // By URL: an index as a row's id leaves the rows showing what they matched
-                // before, when the query narrows them.
-                .onChange(of: picked) { if found.indices.contains($0) { proxy.scrollTo(found[$0].url) } }
-            }
-            .overlay {
-                if found.isEmpty {
-                    Text(empty).appFont(14).foregroundStyle(.secondary)
-                }
+        SearchPanel(prompt: prompt, empty: empty, matches: matches, pick: { pick($0.url) }) { item in
+            Label {
+                Text(item.path)
+                    .appFont(14)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            } icon: {
+                Image(systemName: item.url.hasDirectoryPath ? "folder" : "doc.text")
+                    .foregroundStyle(Color.accentColor)
             }
         }
-        .frame(width: 480, height: 360)
-        .background(Color(nsColor: Theme.background))
-        .onChange(of: query) { _ in picked = 0 }
-        .onAppear {
-            typing = true
-            keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                switch event.keyCode {
-                case 125: picked = min(picked + 1, max(matches.count - 1, 0))
-                case 126: picked = max(picked - 1, 0)
-                case 53: dismiss()
-                default: return event
-                }
-                return nil
-            }
-        }
-        .onDisappear { keys.map(NSEvent.removeMonitor) }
     }
 
-    private var matches: [(url: URL, path: String)] {
+    private func matches(_ query: String) -> [Found] {
         PathMatch.filter(items.map { (url: $0, path: PathMatch.path(of: $0, in: state.root)) }, by: query)
-    }
-
-    private func choose(_ url: URL) {
-        dismiss()
-        pick(url)
+            .map { Found(url: $0.url, path: $0.path) }
     }
 }
 
