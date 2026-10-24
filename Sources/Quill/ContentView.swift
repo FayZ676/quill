@@ -710,7 +710,7 @@ private struct WordCount: View {
     var body: some View {
         let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
         HStack(spacing: 8) {
-            Text("\(stats.words) words · \(minutes) min read")
+            Text("\(stats.words) words · \(minutes) min read ·")
                 .appFont(13)
                 .foregroundStyle(.tertiary)
                 .allowsHitTesting(false)
