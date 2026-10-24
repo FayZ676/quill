@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// One screen on the navigation stack: a folder, a document or the graph. A reference type,
+/// One screen on the navigation stack: a document or the graph. A reference type,
 /// so a rename can move it to its new URL without the stack rebuilding the screen.
 final class Page: ObservableObject, Hashable {
     @Published var url: URL
@@ -33,6 +33,8 @@ final class AppState: ObservableObject {
     @Published private(set) var syncStates: [URL: SyncState] = [:]
     @Published var pages: [Page] = [] { didSet { rememberLocation() } }
     @Published private(set) var graph = LinkGraph()
+    /// The folders open in the library's tree; the rest are collapsed.
+    @Published var expanded: Set<URL> { didSet { defaults.set(expanded.map(\.path), forKey: "expanded") } }
 
     @Published var focusEnabled: Bool { didSet { defaults.set(focusEnabled, forKey: "focusEnabled") } }
     @Published var focusStyle: FocusStyle { didSet { defaults.set(focusStyle.rawValue, forKey: "focusStyle") } }
@@ -66,7 +68,6 @@ final class AppState: ObservableObject {
     /// `"old"` and `"new"`, so an editor showing it can take the change in.
     static let noteRewritten = Notification.Name("QuillNoteRewritten")
 
-    private var children: [URL: [FileNode]] = [:]
     /// The picked folder, kept open for the life of the app (iOS sandbox access).
     private var scopedRoot: URL?
     private var recheck: DispatchWorkItem?
@@ -86,6 +87,7 @@ final class AppState: ObservableObject {
         editorFont = EditorFont(saved: defaults.string(forKey: "editorFont"))
         textInput = TextInput.load(defaults)
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
+        expanded = Set((defaults.stringArray(forKey: "expanded") ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) })
         choosingLibrary = !defaults.bool(forKey: "libraryChosen")
         root = Self.localLibrary
 
@@ -99,8 +101,6 @@ final class AppState: ObservableObject {
     var isExternalLibrary: Bool { scopedRoot != nil }
 
     var libraryName: String { isExternalLibrary ? root.lastPathComponent : "Quill" }
-
-    func children(of dir: URL) -> [FileNode] { children[dir] ?? [] }
 
     /// Every folder in the library, depth-first, with its depth (the library itself is 0).
     var folders: [(url: URL, depth: Int)] {
@@ -137,7 +137,6 @@ final class AppState: ObservableObject {
             let changed = fresh != tree || links.root != root
             let scan = Scan(root: root, tree: fresh, changed: changed,
                             links: changed ? LinkResolver(fresh, root: root) : links,
-                            children: changed ? Self.index(fresh, root: root) : [:],
                             placeholders: placeholders, syncStates: SyncState.of(fresh))
             DispatchQueue.main.async { [weak self] in self?.apply(scan) }
         }
@@ -148,7 +147,6 @@ final class AppState: ObservableObject {
         let tree: [FileNode]
         let changed: Bool
         let links: LinkResolver
-        let children: [URL: [FileNode]]
         let placeholders: Int
         let syncStates: [URL: SyncState]
     }
@@ -160,7 +158,6 @@ final class AppState: ObservableObject {
         if scan.changed {
             links = scan.links
             tree = scan.tree
-            children = scan.children
         }
         if loading {
             loading = false
@@ -178,19 +175,6 @@ final class AppState: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
         rebuildGraph()
-    }
-
-    /// Each folder's contents, by its URL.
-    private static func index(_ tree: [FileNode], root: URL) -> [URL: [FileNode]] {
-        var map: [URL: [FileNode]] = [root: tree]
-        func index(_ nodes: [FileNode]) {
-            for node in nodes where node.isDirectory {
-                map[node.url] = node.children ?? []
-                index(node.children ?? [])
-            }
-        }
-        index(tree)
-        return map
     }
 
     func showGraph() {
@@ -255,8 +239,8 @@ final class AppState: ObservableObject {
 
     func newFolder(in dir: URL) { newItem = NewItem(isFolder: true, dir: dir) }
 
-    /// Makes the New sheet's document or folder, named `typed`, in `dir`. A document opens,
-    /// ready to write in.
+    /// Makes the New sheet's document or folder, named `typed`, in `dir`, and shows it in the
+    /// tree. A document opens, ready to write in.
     func create(_ item: NewItem, named typed: String, in dir: URL) {
         let name = item.fileName(typed)
         let url = uniqueURL(in: dir, base: name.base, ext: name.ext, isDirectory: item.isFolder)
@@ -264,8 +248,8 @@ final class AppState: ObservableObject {
             if item.isFolder { try Coordinated.createDirectory(url) } else { try Coordinated.createFile(url) }
         } catch { return present(error) }
         reloadTree()
-        guard !item.isFolder else { return }
-        if dir == (pages.last?.url ?? root) { pages.append(Page(url)) } else { reveal(url) }
+        guard !item.isFolder else { return expandAncestors(of: url) }
+        reveal(url)
         // After the editor has slid in.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.focusEditor() }
     }
@@ -379,16 +363,17 @@ final class AppState: ObservableObject {
         DispatchQueue.global(qos: .utility).async { Coordinated.announce(all) }
     }
 
-    /// Opens a folder or document with the folders above it, so Back walks up its path.
+    /// Shows a folder or document in the library's tree, opening the folders above it. A
+    /// folder opens too; a document opens in the editor.
     func reveal(_ url: URL) {
         flushSave()
-        var chain: [URL] = []
-        var dir = url
-        while isInside(dir, root) {
-            chain.insert(dir, at: 0)
-            dir = dir.deletingLastPathComponent()
+        expandAncestors(of: url)
+        if !url.hasDirectoryPath {
+            pages = [Page(url)]
+            return
         }
-        pages = chain.map { Page($0) }
+        if isInside(url, root) { expanded.insert(url) }
+        pages = []
     }
 
     func focusEditor() {
@@ -416,7 +401,7 @@ final class AppState: ObservableObject {
         defaults.set(pages.last?.url.path, forKey: "lastLocation")
     }
 
-    /// Reopens the folder or document Quill was showing, with the folders above it.
+    /// Reopens the document Quill was showing, with the folders above it open.
     private func restoreLocation() {
         guard let path = defaults.string(forKey: "lastLocation") else { return }
         var isDir: ObjCBool = false
@@ -426,19 +411,24 @@ final class AppState: ObservableObject {
         reveal(target)
     }
 
-    /// Follows a renamed or moved item with the screens showing it or anything inside it.
+    private func expandAncestors(of url: URL) {
+        var folders: [URL] = []
+        var dir = url.deletingLastPathComponent()
+        while isInside(dir, root) {
+            folders.append(dir)
+            dir = dir.deletingLastPathComponent()
+        }
+        expanded.formUnion(folders)
+    }
+
+    /// Follows a renamed or moved item with the screens showing it or anything inside it,
+    /// and the open folders.
     private func relocate(_ old: URL, to new: URL) {
         for page in pages {
             if let moved = rebase(page.url, from: old, to: new) { page.url = moved }
         }
-        // A screen for something moved out of the folder above it no longer fits the stack.
-        // (Above a note there can be another note, followed from a link in it.)
-        if let i = pages.indices.dropFirst().first(where: {
-            pages[$0 - 1].url.hasDirectoryPath && !isInside(pages[$0].url, pages[$0 - 1].url)
-        }) {
-            pages.removeSubrange(i...)
-        }
         if let first = pages.first, !first.isGraph, !isInside(first.url, root) { pages = [] }
+        expanded = Set(expanded.map { rebase($0, from: old, to: new) ?? $0 })
         rememberLocation()
     }
 
@@ -490,6 +480,7 @@ final class AppState: ObservableObject {
     ## Library
 
     - Tap ✎ to start a new document
+    - Tap a folder to open or close it
     - Touch and hold a document to rename, move, share or delete it
     - Tap a document's title to rename it
     - To write in the same files as Quill on your Mac, open the library settings and choose its folder in iCloud Drive
