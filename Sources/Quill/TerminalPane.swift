@@ -148,6 +148,7 @@ private final class QuillTerminal: LocalProcessTerminalView {
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["QUILL_LIBRARY"] = root.path
         env["QUILL_FILE"] = file?.path
+        env["QUILL_START_CLAUDE"] = "1"
         if (shell as NSString).lastPathComponent == "zsh", let zdotdir = ZshIntegration.install() {
             env["QUILL_USER_ZDOTDIR"] = inherited["ZDOTDIR"] ?? inherited["HOME"] ?? NSHomeDirectory()
             env["ZDOTDIR"] = zdotdir.path
@@ -230,8 +231,8 @@ private final class QuillTerminal: LocalProcessTerminalView {
 }
 
 /// Startup files that zsh reads in place of yours (through `ZDOTDIR`), as VS Code's terminal
-/// does: each reads your own, then Quill's additions follow. The one addition so far is
-/// `claude`, which tells Claude Code the note that's open, so you can ask about "this".
+/// does: each reads your own, then Quill's additions follow. The additions: `claude`, which
+/// tells Claude Code the note that's open, so you can ask about "this"; and starting it.
 enum ZshIntegration {
     /// Your file of the same name, read with `ZDOTDIR` where zsh would have had it.
     private static func yours(_ name: String) -> String {
@@ -272,6 +273,19 @@ enum ZshIntegration {
             the like without naming a file, they mean the open note: read it before answering, as \\
             they may have changed it since you last did." "$@"
               }
+            fi
+
+            # Claude Code starts on its own at the first prompt, once all your startup files
+            # have run, and leaves you at the prompt when it quits. Shells started from this
+            # one don't do it again.
+            if [[ -n $QUILL_START_CLAUDE ]]; then
+              unset QUILL_START_CLAUDE
+              autoload -Uz add-zsh-hook
+              function _quill_start_claude {
+                add-zsh-hook -d precmd _quill_start_claude
+                (( $+commands[claude] )) && claude
+              }
+              add-zsh-hook precmd _quill_start_claude
             fi
 
             if [[ -o login ]]; then

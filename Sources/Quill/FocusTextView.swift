@@ -24,11 +24,14 @@ final class FocusTextView: NSTextView {
     private let caretView = CaretView()
 
     /// AppKit's caret blinks hard on and off; this one is a layer that fades. AppKit still
-    /// says where the caret goes, through this call, but never gets to draw it. The rect
-    /// covers the whole line fragment, including the line spacing below the text, so it's
-    /// trimmed to the font's own line height to match the glyphs.
+    /// calls here to place the caret, but never gets to draw it. Its rect is worked out
+    /// when the selection changes and kept, so it falls behind when the text moves under
+    /// the caret (in typewriter mode, as the terminal opens and closes); so the caret is
+    /// placed from the text as it lies now, falling back on AppKit's rect. The rect covers
+    /// the whole line fragment, including the line spacing below the text, so it's trimmed
+    /// to the font's own line height to match the glyphs.
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
-        var caret = rect
+        var caret = insertionRect() ?? rect
         caret.size.width = Self.caretWidth
         if let lm = layoutManager {
             caret.size.height = min(rect.height, lm.defaultLineHeight(for: fonts.regular))
@@ -60,15 +63,19 @@ final class FocusTextView: NSTextView {
         return became
     }
 
-    /// Puts the caret on its character as the text now lies. AppKit only says where the
-    /// caret goes when the selection changes, so it falls behind when the text moves under it.
+    /// Moves the caret with the text, without waiting for AppKit's next call.
     private func placeCaret() {
-        guard let window, window.firstResponder === self, shouldDrawInsertionPoint,
-              selectedRange().length == 0 else { return }
+        guard window?.firstResponder === self, shouldDrawInsertionPoint,
+              let rect = insertionRect() else { return }
+        drawInsertionPoint(in: rect, color: insertionPointColor, turnedOn: true)
+    }
+
+    /// Where the caret goes, from the text as it lies now; nil with a selection.
+    private func insertionRect() -> NSRect? {
+        guard let window, selectedRange().length == 0 else { return nil }
         let onScreen = firstRect(forCharacterRange: selectedRange(), actualRange: nil)
-        guard onScreen != .zero else { return }
-        drawInsertionPoint(in: convert(window.convertFromScreen(onScreen), from: nil),
-                           color: insertionPointColor, turnedOn: true)
+        guard onScreen != .zero else { return nil }
+        return convert(window.convertFromScreen(onScreen), from: nil)
     }
 
     override var textContainerOrigin: NSPoint {
