@@ -9,6 +9,7 @@ import SwiftUI
 /// writing, as the sidebar does.
 struct TerminalPane: View {
     @EnvironmentObject var state: AppState
+    @StateObject private var shells = Shells()
     @AppStorage("terminalHeight") private var height = 220.0
     /// The height when the drag began.
     @State private var dragStart: Double?
@@ -17,13 +18,26 @@ struct TerminalPane: View {
     private var note: URL? { state.terminalOnLibrary ? nil : state.openFile }
 
     var body: some View {
+        let place = note ?? state.root
         VStack(spacing: 0) {
             Divider().overlay { resizeHandle }
-            ContextSwitch(note: state.openFile, onLibrary: note == nil) { library in
-                state.terminalOnLibrary = library
+            HStack(spacing: 8) {
+                if shells.installed.count > 1 {
+                    AgentSwitch(agents: shells.installed, running: shells.agents[place]) { agent in
+                        state.terminalAgent = agent
+                        shells.restart(place)
+                    }
+                }
+                Spacer()
+                ContextSwitch(note: state.openFile, onLibrary: note == nil) { library in
+                    state.terminalOnLibrary = library
+                }
             }
-            TerminalHost(place: note ?? state.root, file: note, root: state.root,
-                         shown: state.terminalShown,
+            .appFont(12)
+            .padding(.horizontal, 14)
+            .frame(height: 26)
+            TerminalHost(shells: shells, place: place, file: note, root: state.root,
+                         agent: state.terminalAgent, shown: state.terminalShown,
                          exited: { withAnimation { state.terminalShown = false } },
                          focusEditor: state.focusEditor)
                 .padding(.leading, 14)
@@ -56,6 +70,47 @@ struct TerminalPane: View {
     }
 }
 
+/// What the terminal starts on its own. Picked in the View menu, or with the switch at the top
+/// of the pane when both agents are installed.
+enum TerminalAgent: String, CaseIterable, Identifiable {
+    case claude = "Claude Code", codex = "Codex", none = "Nothing"
+    var id: String { rawValue }
+
+    /// Its command, which is also how the shell names it to Quill.
+    var command: String? {
+        switch self {
+        case .claude: "claude"
+        case .codex: "codex"
+        case .none: nil
+        }
+    }
+
+    init?(command: Substring) {
+        guard let agent = Self.allCases.first(where: { $0.command == String(command) }) else { return nil }
+        self = agent
+    }
+}
+
+/// "Claude Code · Codex", the one this shell started lit in the accent; click the other to
+/// quit this one and start that in its place, there and in shells to come.
+private struct AgentSwitch: View {
+    let agents: [TerminalAgent]
+    let running: TerminalAgent?
+    let pick: (TerminalAgent) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(agents.enumerated()), id: \.element) { index, agent in
+                if index > 0 { Text("·").foregroundStyle(.tertiary) }
+                Choice(title: agent.rawValue, lit: agent == running) {
+                    if agent != running { pick(agent) }
+                }
+                .help("Start \(agent.rawValue) Here")
+            }
+        }
+    }
+}
+
 /// The open note's name and "Library", the one whose shell is showing lit in the accent;
 /// click the other to switch. Just "Library" with no note open.
 private struct ContextSwitch: View {
@@ -65,21 +120,24 @@ private struct ContextSwitch: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Spacer()
             if let note {
-                choice(FileNode.displayName(note), lit: !onLibrary) { pick(false) }
+                Choice(title: FileNode.displayName(note), lit: !onLibrary) { pick(false) }
                     .help("Talk About This Note")
                 Text("·").foregroundStyle(.tertiary)
             }
-            choice("Library", lit: onLibrary) { pick(true) }
+            Choice(title: "Library", lit: onLibrary) { pick(true) }
                 .help("Talk About the Whole Library")
         }
-        .appFont(12)
-        .padding(.horizontal, 14)
-        .frame(height: 26)
     }
+}
 
-    private func choice(_ title: String, lit: Bool, action: @escaping () -> Void) -> some View {
+/// A word at the top of the pane, lit in the accent when it's the one in use.
+private struct Choice: View {
+    let title: String
+    let lit: Bool
+    let action: () -> Void
+
+    var body: some View {
         Button(action: action) {
             Text(title).lineLimit(1).truncationMode(.middle)
         }
@@ -91,21 +149,21 @@ private struct ContextSwitch: View {
 
 /// Shows the shell for the open note, or the library's, starting it the first time it's shown.
 private struct TerminalHost: NSViewRepresentable {
+    let shells: Shells
     /// The note, or the library when no note is open: whose shell to show.
     let place: URL
     let file: URL?
     let root: URL
+    /// What a new shell starts.
+    let agent: TerminalAgent
     let shown: Bool
     /// The shell on show quit, as when you type `exit`.
     let exited: () -> Void
     let focusEditor: () -> Void
 
-    func makeCoordinator() -> Shells { Shells() }
-
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ host: NSView, context: Context) {
-        let shells = context.coordinator
         shells.exited = exited
         let wasShown = shells.shown
         shells.shown = shown
@@ -114,7 +172,7 @@ private struct TerminalHost: NSViewRepresentable {
             if wasShown, host.window?.firstResponder is TerminalView { focusEditor() }
             return
         }
-        let terminal = shells.terminal(for: place, file: file, root: root, size: host.bounds)
+        let terminal = shells.terminal(for: place, file: file, root: root, agent: agent, size: host.bounds)
         // Typing carries over to the shell switched to; a note picked in the sidebar
         // doesn't pull the typing down here.
         var focus = !wasShown
@@ -131,25 +189,46 @@ private struct TerminalHost: NSViewRepresentable {
     }
 }
 
-/// The shells started so far, by the note or library they belong to. Each lives until it
-/// quits or Quill does.
-private final class Shells: NSObject, LocalProcessTerminalViewDelegate {
+/// The shells started so far, by the note or library they belong to, and what they've said
+/// about the agents. Each lives until it quits, it's restarted, or Quill quits.
+private final class Shells: NSObject, ObservableObject, LocalProcessTerminalViewDelegate {
     private var terminals: [URL: QuillTerminal] = [:]
+    /// The agents installed, as the latest shell found them.
+    @Published private(set) var installed: [TerminalAgent] = []
+    /// The agent each shell started, by its note or library.
+    @Published private(set) var agents: [URL: TerminalAgent] = [:]
     var shown = false
     var exited: () -> Void = {}
 
-    func terminal(for place: URL, file: URL?, root: URL, size: NSRect) -> QuillTerminal {
+    func terminal(for place: URL, file: URL?, root: URL, agent: TerminalAgent, size: NSRect) -> QuillTerminal {
         if let terminal = terminals[place] { return terminal }
         let terminal = QuillTerminal(frame: size)
         terminal.processDelegate = self
-        terminal.start(in: file?.deletingLastPathComponent() ?? root, file: file, root: root)
+        terminal.reported = { [weak self] installed, started in
+            self?.installed = installed
+            self?.agents[place] = started
+        }
+        terminal.start(in: file?.deletingLastPathComponent() ?? root, file: file, root: root, agent: agent)
         terminals[place] = terminal
         return terminal
     }
 
+    /// Ends the place's shell and whatever's running in it, as closing a Terminal window does.
+    /// A new one, with the agent now picked, takes its place in the pane, and the typing with it.
+    func restart(_ place: URL) {
+        guard let old = terminals.removeValue(forKey: place) else { return }
+        old.processDelegate = nil
+        kill(old.process.shellPid, SIGHUP)
+        old.terminate()
+        agents[place] = nil
+    }
+
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         DispatchQueue.main.async { [self] in
-            terminals = terminals.filter { $0.value !== source }
+            if let place = terminals.first(where: { $0.value === source })?.key {
+                terminals[place] = nil
+                agents[place] = nil
+            }
             // The next time this note's pane is opened, it gets a new shell.
             if source.superview != nil {
                 source.removeFromSuperview()
@@ -170,14 +249,24 @@ private final class QuillTerminal: LocalProcessTerminalView {
         font = NSFont(name: "iAWriterMonoS-Regular", size: 13)
             ?? .monospacedSystemFont(ofSize: 13, weight: .regular)
         applyColors()
+        // "claude,codex;claude": the agents installed, then the one started, if any.
+        getTerminal().registerOscHandler(code: ZshIntegration.reportCode) { [weak self] data in
+            let parts = String(decoding: data, as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false)
+            let installed = (parts.first?.split(separator: ",") ?? []).compactMap(TerminalAgent.init(command:))
+            let started = parts.count > 1 ? TerminalAgent(command: parts[1]) : nil
+            DispatchQueue.main.async { self?.reported(installed, started) }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// What the shell found as it started: the agents installed, and the one it started.
+    var reported: (_ installed: [TerminalAgent], _ started: TerminalAgent?) -> Void = { _, _ in }
+
     /// Starts your login shell, so it has the PATH and settings it has in Terminal. It gets
     /// the session's basics rather than all of Quill's environment, which can carry
     /// whatever launched Quill (another terminal, say) into the shell.
-    func start(in dir: URL, file: URL?, root: URL) {
+    func start(in dir: URL, file: URL?, root: URL, agent: TerminalAgent) {
         let inherited = ProcessInfo.processInfo.environment
         let shell = inherited["SHELL"] ?? "/bin/zsh"
         var env = inherited.filter { key, _ in
@@ -192,7 +281,8 @@ private final class QuillTerminal: LocalProcessTerminalView {
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["QUILL_LIBRARY"] = root.path
         env["QUILL_FILE"] = file?.path
-        env["QUILL_START_CLAUDE"] = "1"
+        env["QUILL_START"] = "1"
+        env["QUILL_AGENT"] = agent.command ?? ""
         if (shell as NSString).lastPathComponent == "zsh", let zdotdir = ZshIntegration.install() {
             env["QUILL_USER_ZDOTDIR"] = inherited["ZDOTDIR"] ?? inherited["HOME"] ?? NSHomeDirectory()
             env["ZDOTDIR"] = zdotdir.path
@@ -330,10 +420,15 @@ struct QuerySifter {
 }
 
 /// Startup files that zsh reads in place of yours (through `ZDOTDIR`), as VS Code's terminal
-/// does: each reads your own, then Quill's additions follow. The additions: `claude`, which
-/// tells Claude Code the note that's open (so you can ask about "this") or, in the library's
-/// shell, that the folder is your library; and starting it.
+/// does: each reads your own, then Quill's additions follow. The additions: `claude` and
+/// `codex`, which tell Claude Code and Codex the note that's open (so you can ask about
+/// "this") or, in the library's shell, that the folder is your library; and starting one.
 enum ZshIntegration {
+    /// The private OSC code by which a shell tells Quill which agents are installed, and which
+    /// it started. Quill can't look for itself: their folders are often on the PATH only once
+    /// your .zshrc has run.
+    static let reportCode = 7701
+
     /// Your file of the same name, read with `ZDOTDIR` where zsh would have had it.
     private static func yours(_ name: String) -> String {
         """
@@ -359,38 +454,64 @@ enum ZshIntegration {
             [[ $HISTFILE == $QUILL_ZDOTDIR/.zsh_history ]] && HISTFILE=$QUILL_USER_ZDOTDIR/.zsh_history
             \(yours(".zshrc"))
 
-            unalias claude 2>/dev/null
+            unalias claude codex 2>/dev/null
+            # What the agents are told on top of their own instructions.
+            function _quill_context {
+              if [[ -n $QUILL_FILE ]]; then
+                print -r -- "You were started from the terminal in Quill, a Markdown editor, where the \\
+            user has the note \\"$QUILL_FILE\\" open. Their library of notes is \\"$QUILL_LIBRARY\\". When \\
+            they say \\"this\\", \\"my note\\" or the like without naming a file, they mean the open note: \\
+            read it before answering, as they may have changed it since you last did."
+              else
+                print -r -- "You were started from the terminal in Quill, a Markdown editor, to talk \\
+            about the user's whole library of notes: the folder you're in, \\"$QUILL_LIBRARY\\". When they \\
+            say \\"my notes\\", \\"my library\\" or the like, they mean its Markdown files; look through \\
+            them before answering."
+              fi
+            }
+
+            # In a note's shell, which starts in the note's folder, the agents may also reach the
+            # rest of the library. A lone word is a subcommand (claude mcp, codex login): passed
+            # on as is.
             function claude {
-              # A lone word is a subcommand (claude mcp, claude update): passed on as is.
               if [[ $# -gt 0 && $1 != -* && $1 != *' '* ]]; then
                 command claude "$@"
                 return
               fi
-              if [[ -n $QUILL_FILE ]]; then
-                command claude --add-dir "$QUILL_LIBRARY" --append-system-prompt "You were started \\
-            from the terminal in Quill, a Markdown editor, where the user has the note \\"$QUILL_FILE\\" \\
-            open. Their library of notes is \\"$QUILL_LIBRARY\\". When they say \\"this\\", \\"my note\\" or \\
-            the like without naming a file, they mean the open note: read it before answering, as \\
-            they may have changed it since you last did." "$@"
-              else
-                command claude --append-system-prompt "You were started from the terminal in Quill, a \\
-            Markdown editor, to talk about the user's whole library of notes: the folder you're in, \\
-            \\"$QUILL_LIBRARY\\". When they say \\"my notes\\", \\"my library\\" or the like, they mean \\
-            its Markdown files; look through them before answering." "$@"
+              local library=()
+              [[ -n $QUILL_FILE ]] && library=(--add-dir "$QUILL_LIBRARY")
+              command claude $library --append-system-prompt "$(_quill_context)" "$@"
+            }
+            function codex {
+              if [[ $# -gt 0 && $1 != -* && $1 != *' '* ]]; then
+                command codex "$@"
+                return
               fi
+              local library=()
+              [[ -n $QUILL_FILE ]] && library=(--add-dir "$QUILL_LIBRARY")
+              # Not TOML, so Codex takes it as the literal string.
+              command codex $library -c "developer_instructions=$(_quill_context)" "$@"
             }
 
-            # Claude Code starts on its own at the first prompt, once all your startup files
-            # have run, and leaves you at the prompt when it quits. Shells started from this
-            # one don't do it again.
-            if [[ -n $QUILL_START_CLAUDE ]]; then
-              unset QUILL_START_CLAUDE
+            # The agent starts on its own at the first prompt, once all your startup files have
+            # run, and leaves you at the prompt when it quits: the one picked in Quill if it's
+            # installed, or else whichever is. Quill hears which are installed, for the switch
+            # at the top of the pane. Shells started from this one don't do it again.
+            if [[ -n $QUILL_START ]]; then
+              unset QUILL_START
               autoload -Uz add-zsh-hook
-              function _quill_start_claude {
-                add-zsh-hook -d precmd _quill_start_claude
-                (( $+commands[claude] )) && claude
+              function _quill_start {
+                add-zsh-hook -d precmd _quill_start
+                local installed=() agent= a
+                for a in claude codex; do (( $+commands[$a] )) && installed+=($a); done
+                if [[ -n $QUILL_AGENT ]]; then
+                  for a in $QUILL_AGENT $installed; do (( $+commands[$a] )) && agent=$a && break; done
+                fi
+                unset QUILL_AGENT
+                printf '\\e]\(reportCode);%s;%s\\a' "${(j:,:)installed}" "$agent"
+                [[ -n $agent ]] && $agent
               }
-              add-zsh-hook precmd _quill_start_claude
+              add-zsh-hook precmd _quill_start
             fi
 
             if [[ -o login ]]; then

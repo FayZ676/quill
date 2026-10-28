@@ -108,6 +108,9 @@ struct QuillCommands: Commands {
                 withAnimation { state.terminalShown.toggle() }
             }
             .keyboardShortcut("`", modifiers: .control)
+            Picker("Start in Terminal", selection: $state.terminalAgent) {
+                ForEach(TerminalAgent.allCases) { Text($0.rawValue).tag($0) }
+            }
             Divider()
             Toggle("Focus Mode", isOn: $state.focusEnabled)
                 .keyboardShortcut("d", modifiers: [.command, .shift])

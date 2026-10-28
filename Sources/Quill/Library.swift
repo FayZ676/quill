@@ -40,6 +40,10 @@ final class AppState: ObservableObject {
     @Published var terminalShown = false
     /// The terminal shows the library's shell, rather than the open note's.
     @Published var terminalOnLibrary = false
+    /// What a new shell in the terminal starts on its own.
+    @Published var terminalAgent: TerminalAgent {
+        didSet { defaults.set(terminalAgent.rawValue, forKey: "terminalAgent") }
+    }
     /// The file or folder the New sheet is naming and placing.
     @Published var newItem: NewItem?
     @Published var renameTarget: URL?
@@ -81,6 +85,7 @@ final class AppState: ObservableObject {
         editorFont = EditorFont(saved: defaults.string(forKey: "editorFont"))
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         textInput = TextInput.load(defaults)
+        terminalAgent = TerminalAgent(rawValue: defaults.string(forKey: "terminalAgent") ?? "") ?? .claude
         expanded = Set((defaults.stringArray(forKey: "expanded") ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) })
 
         if let path = defaults.string(forKey: "root"), FileManager.default.fileExists(atPath: path) {
