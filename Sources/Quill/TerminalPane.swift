@@ -200,6 +200,14 @@ private final class QuillTerminal: LocalProcessTerminalView {
                      execName: "-" + (shell as NSString).lastPathComponent, currentDirectory: dir.path)
     }
 
+    /// The program's output, less the queries SwiftTerm misreads (see `QuerySifter`).
+    private var sifter = QuerySifter()
+
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        let sifted = sifter.sift(slice)
+        if !sifted.isEmpty { super.dataReceived(slice: sifted[...]) }
+    }
+
     // MARK: Scrolling
 
     /// SwiftTerm scrolls its own history on the wheel and nothing else, and a full-screen
@@ -270,6 +278,53 @@ private final class QuillTerminal: LocalProcessTerminalView {
             caretColor = Theme.accent
             selectedTextBackgroundColor = Theme.selection
         }
+    }
+}
+
+/// Drops the kitty keyboard sequences (`CSI ? u`, `CSI > 1 u` and the like) and the version
+/// query (`CSI > q`) from a program's output. SwiftTerm 1.11 reads any `CSI … u` as "restore
+/// the cursor" and any `CSI … q` as "set the cursor's shape", whatever comes before them, so
+/// Claude Code asking what the terminal supports sent the cursor back to the top left. They're
+/// questions about things SwiftTerm doesn't do, so going unanswered is the right answer.
+struct QuerySifter {
+    /// The end of the last chunk, when it might be the start of a sequence to drop.
+    private var held: [UInt8] = []
+
+    mutating func sift(_ chunk: ArraySlice<UInt8>) -> [UInt8] {
+        let bytes = held + chunk
+        held = []
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.count)
+        var i = 0
+        while i < bytes.count {
+            guard bytes[i] == 0x1b else {
+                out.append(bytes[i])
+                i += 1
+                continue
+            }
+            // ESC [, then one of ? > < =, then digits and semicolons, then the final byte.
+            var j = i + 1
+            guard j < bytes.count else { held = Array(bytes[i...]); break }
+            guard bytes[j] == UInt8(ascii: "[") else { out.append(bytes[i]); i += 1; continue }
+            j += 1
+            guard j < bytes.count else { held = Array(bytes[i...]); break }
+            let prefix = bytes[j]
+            guard [UInt8(ascii: "?"), UInt8(ascii: ">"), UInt8(ascii: "<"), UInt8(ascii: "=")].contains(prefix)
+            else { out.append(bytes[i]); i += 1; continue }
+            j += 1
+            while j < bytes.count, (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(bytes[j]) || bytes[j] == UInt8(ascii: ";") {
+                j += 1
+            }
+            guard j < bytes.count else { held = Array(bytes[i...]); break }
+            let final = bytes[j]
+            if final == UInt8(ascii: "u") || (final == UInt8(ascii: "q") && prefix == UInt8(ascii: ">")) {
+                i = j + 1
+            } else {
+                out.append(bytes[i])
+                i += 1
+            }
+        }
+        return out
     }
 }
 
