@@ -215,7 +215,20 @@ final class FocusTextView: NSTextView {
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        if taskBox(at: event) != nil { NSCursor.pointingHand.set() }
+        if taskBox(at: event) != nil || commandOverLink(event) { NSCursor.pointingHand.set() }
+    }
+
+    /// Pressing or letting go of ⌘ over a link turns it clickable or back into text.
+    override func flagsChanged(with event: NSEvent) {
+        super.flagsChanged(with: event)
+        guard let window else { return }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard visibleRect.contains(point), noteLink(at: point) != nil else { return }
+        (event.modifierFlags.contains(.command) ? NSCursor.pointingHand : NSCursor.iBeam).set()
+    }
+
+    private func commandOverLink(_ event: NSEvent) -> Bool {
+        event.modifierFlags.contains(.command) && noteLink(at: convert(event.locationInWindow, from: nil)) != nil
     }
 
     private func taskBox(at event: NSEvent) -> NSRange? {

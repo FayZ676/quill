@@ -70,6 +70,7 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .pointingHandCursor(pick != nil)
                         }
                     }
                     .padding(6)

@@ -69,6 +69,7 @@ struct CheatSheetButton: View {
                 .frame(minWidth: 20, minHeight: 18)
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .foregroundStyle(Color.accentColor)
         .help("Markdown Cheat Sheet")
         // Back to writing once the sheet is put away.

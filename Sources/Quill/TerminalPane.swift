@@ -84,6 +84,7 @@ private struct ContextSwitch: View {
             Text(title).lineLimit(1).truncationMode(.middle)
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .foregroundStyle(lit ? Color.accentColor : Color.secondary)
     }
 }
@@ -436,6 +437,7 @@ struct TerminalButton: View {
                 .frame(minWidth: 20, minHeight: 18)
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .foregroundStyle(Color.accentColor)
         .help(state.terminalShown ? "Hide Terminal (⌃`)" : "Show Terminal (⌃`)")
     }

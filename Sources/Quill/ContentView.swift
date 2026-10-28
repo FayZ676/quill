@@ -327,6 +327,7 @@ private struct NewItemPanel: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
                 .help("Choose a Folder")
             }
             HStack {
@@ -633,6 +634,7 @@ private struct TitleField: View {
                         text = FileNode.displayName(file)
                         editing = true
                     }
+                    .pointingHandCursor()
                     .help("Click to rename")
             }
         }
@@ -704,6 +706,7 @@ private struct BareButtonStyle: ButtonStyle {
             .foregroundStyle(.secondary)
             .opacity(configuration.isPressed ? 0.5 : 1)
             .contentShape(Rectangle())
+            .pointingHandCursor()
     }
 }
 

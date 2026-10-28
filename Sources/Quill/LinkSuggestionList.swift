@@ -41,6 +41,7 @@ struct LinkSuggestionList: View {
                             in: RoundedRectangle(cornerRadius: 5))
                 .contentShape(Rectangle())
                 .onTapGesture { pick(i) }
+                .pointingHandCursor()
             }
         }
         .padding(Self.inset)
