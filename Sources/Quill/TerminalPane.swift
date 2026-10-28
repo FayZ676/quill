@@ -130,18 +130,86 @@ private final class QuillTerminal: LocalProcessTerminalView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Starts your login shell, so it has the PATH and settings it has in Terminal.
+    /// Starts your login shell, so it has the PATH and settings it has in Terminal. It gets
+    /// the session's basics rather than all of Quill's environment, which can carry
+    /// whatever launched Quill (another terminal, say) into the shell.
     func start(in dir: URL, file: URL?, root: URL) {
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        var env = ProcessInfo.processInfo.environment
+        let inherited = ProcessInfo.processInfo.environment
+        let shell = inherited["SHELL"] ?? "/bin/zsh"
+        var env = inherited.filter { key, _ in
+            ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING"].contains(key)
+                || key == "LANG" || key.hasPrefix("LC_")
+        }
+        // The login shell builds the rest, as it does in Terminal.
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
         env["TERM_PROGRAM"] = "Quill"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["QUILL_LIBRARY"] = root.path
         env["QUILL_FILE"] = file?.path
+        if (shell as NSString).lastPathComponent == "zsh", let zdotdir = ZshIntegration.install() {
+            env["QUILL_USER_ZDOTDIR"] = inherited["ZDOTDIR"] ?? inherited["HOME"] ?? NSHomeDirectory()
+            env["ZDOTDIR"] = zdotdir.path
+        }
         startProcess(executable: shell, environment: env.map { "\($0.key)=\($0.value)" },
                      execName: "-" + (shell as NSString).lastPathComponent, currentDirectory: dir.path)
+    }
+
+    // MARK: Scrolling
+
+    /// SwiftTerm scrolls its own history on the wheel and nothing else, and a full-screen
+    /// program like Claude Code has none there. So, as Terminal does, the wheel goes to a
+    /// program that asks for the mouse, and moves the cursor keys in one that took over
+    /// the screen without it. SwiftTerm's handler can't be overridden from here, so the
+    /// window's wheel events are watched instead.
+    private var wheelMonitor: Any?
+    /// Wheel travel not yet sent, in lines.
+    private var pendingLines: CGFloat = 0
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
+        wheelMonitor = nil
+        guard window != nil else { return }
+        wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.wheel(event) ?? event
+        }
+    }
+
+    deinit {
+        if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
+    }
+
+    /// Takes the event if it's for the program running here; lets it through otherwise.
+    private func wheel(_ event: NSEvent) -> NSEvent? {
+        let point = convert(event.locationInWindow, from: nil)
+        guard event.window === window, !isHiddenOrHasHiddenAncestor, bounds.contains(point) else { return event }
+        let reports = allowMouseReporting && terminal.mouseMode != .off
+        guard reports || terminal.isCurrentBufferAlternate else { return event }
+
+        let lineHeight = max(1, font.ascender - font.descender + font.leading)
+        pendingLines += event.hasPreciseScrollingDeltas ? event.scrollingDeltaY / lineHeight : event.scrollingDeltaY
+        let lines = Int(pendingLines)
+        pendingLines -= CGFloat(lines)
+        // Up the page, toward what came earlier, for a positive delta.
+        let up = lines > 0
+        for _ in 0..<abs(lines) {
+            if reports {
+                let col = min(terminal.cols - 1, max(0, Int(point.x / bounds.width * CGFloat(terminal.cols))))
+                let row = min(terminal.rows - 1, max(0, Int((bounds.height - point.y) / bounds.height * CGFloat(terminal.rows))))
+                let flags = terminal.encodeButton(button: up ? 4 : 5, release: false,
+                                                  shift: event.modifierFlags.contains(.shift),
+                                                  meta: event.modifierFlags.contains(.option),
+                                                  control: event.modifierFlags.contains(.control))
+                terminal.sendEvent(buttonFlags: flags, x: col, y: row)
+            } else if terminal.applicationCursor {
+                send(up ? EscapeSequences.moveUpApp : EscapeSequences.moveDownApp)
+            } else {
+                send(up ? EscapeSequences.moveUpNormal : EscapeSequences.moveDownNormal)
+            }
+        }
+        return nil
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -158,6 +226,84 @@ private final class QuillTerminal: LocalProcessTerminalView {
             caretColor = Theme.accent
             selectedTextBackgroundColor = Theme.selection
         }
+    }
+}
+
+/// Startup files that zsh reads in place of yours (through `ZDOTDIR`), as VS Code's terminal
+/// does: each reads your own, then Quill's additions follow. The one addition so far is
+/// `claude`, which tells Claude Code the note that's open, so you can ask about "this".
+enum ZshIntegration {
+    /// Your file of the same name, read with `ZDOTDIR` where zsh would have had it.
+    private static func yours(_ name: String) -> String {
+        """
+        ZDOTDIR=$QUILL_USER_ZDOTDIR
+        [[ -r $ZDOTDIR/\(name) ]] && source $ZDOTDIR/\(name)
+        """
+    }
+
+    private static let files = [
+        ".zshenv": """
+            QUILL_ZDOTDIR=$ZDOTDIR
+            \(yours(".zshenv"))
+            # Your .zshenv may have moved your startup files.
+            QUILL_USER_ZDOTDIR=$ZDOTDIR
+            ZDOTDIR=$QUILL_ZDOTDIR
+            """,
+        ".zprofile": """
+            \(yours(".zprofile"))
+            ZDOTDIR=$QUILL_ZDOTDIR
+            """,
+        ".zshrc": """
+            # macOS's /etc/zshrc put history beside these files.
+            [[ $HISTFILE == $QUILL_ZDOTDIR/.zsh_history ]] && HISTFILE=$QUILL_USER_ZDOTDIR/.zsh_history
+            \(yours(".zshrc"))
+
+            if [[ -n $QUILL_FILE ]]; then
+              unalias claude 2>/dev/null
+              function claude {
+                # A lone word is a subcommand (claude mcp, claude update): passed on as is.
+                if [[ $# -gt 0 && $1 != -* && $1 != *' '* ]]; then
+                  command claude "$@"
+                  return
+                fi
+                command claude --add-dir "$QUILL_LIBRARY" --append-system-prompt "You were started \\
+            from the terminal in Quill, a Markdown editor, where the user has the note \\"$QUILL_FILE\\" \\
+            open. Their library of notes is \\"$QUILL_LIBRARY\\". When they say \\"this\\", \\"my note\\" or \\
+            the like without naming a file, they mean the open note: read it before answering, as \\
+            they may have changed it since you last did." "$@"
+              }
+            fi
+
+            if [[ -o login ]]; then
+              ZDOTDIR=$QUILL_ZDOTDIR
+            else
+              unset QUILL_ZDOTDIR QUILL_USER_ZDOTDIR
+            fi
+            """,
+        ".zlogin": """
+            \(yours(".zlogin"))
+            unset QUILL_ZDOTDIR QUILL_USER_ZDOTDIR
+            """,
+    ]
+
+    /// Writes the files if they've changed, and says where they are.
+    static func install() -> URL? {
+        guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        let dir = support.appendingPathComponent("Quill/zsh", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for (name, text) in files {
+                let url = dir.appendingPathComponent(name)
+                let contents = "# Written by Quill for its terminal; see ZshIntegration.\n" + text + "\n"
+                if (try? String(contentsOf: url, encoding: .utf8)) != contents {
+                    try contents.write(to: url, atomically: true, encoding: .utf8)
+                }
+            }
+        } catch {
+            return nil
+        }
+        return dir
     }
 }
 

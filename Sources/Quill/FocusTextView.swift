@@ -52,6 +52,25 @@ final class FocusTextView: NSTextView {
         return resigned
     }
 
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        // The text may have moved while you were away, as when the terminal under the page
+        // opened and closed; AppKit would bring the caret back where it last saw it.
+        if became { DispatchQueue.main.async { self.placeCaret() } }
+        return became
+    }
+
+    /// Puts the caret on its character as the text now lies. AppKit only says where the
+    /// caret goes when the selection changes, so it falls behind when the text moves under it.
+    private func placeCaret() {
+        guard let window, window.firstResponder === self, shouldDrawInsertionPoint,
+              selectedRange().length == 0 else { return }
+        let onScreen = firstRect(forCharacterRange: selectedRange(), actualRange: nil)
+        guard onScreen != .zero else { return }
+        drawInsertionPoint(in: convert(window.convertFromScreen(onScreen), from: nil),
+                           color: insertionPointColor, turnedOn: true)
+    }
+
     override var textContainerOrigin: NSPoint {
         NSPoint(x: originX, y: textContainerInset.height)
     }
@@ -89,6 +108,7 @@ final class FocusTextView: NSTextView {
         invalidateTextContainerOrigin()
         sizeToFit()
         needsDisplay = true
+        placeCaret()
     }
 
     // MARK: Focus mode
