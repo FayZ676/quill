@@ -38,6 +38,8 @@ final class AppState: ObservableObject {
     @Published var showingCheatSheet = false
     /// The terminal under the page. Animate changes so it slides.
     @Published var terminalShown = false
+    /// The terminal shows the library's shell, rather than the open note's.
+    @Published var terminalOnLibrary = false
     /// The file or folder the New sheet is naming and placing.
     @Published var newItem: NewItem?
     @Published var renameTarget: URL?

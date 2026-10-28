@@ -4,24 +4,31 @@ import SwiftUI
 
 /// A shell under the page, in Quill's type and colors, for running command-line tools (an AI
 /// agent, say) over your notes. Each note has its own, started in the note's folder with the
-/// note in `$QUILL_FILE`; with nothing open, the library has one. Opened by hand only, and it
-/// slides away once you start writing, as the sidebar does.
+/// note in `$QUILL_FILE`, and the library has one; the switch at the top picks between the
+/// open note's and the library's. Opened by hand only, and it slides away once you start
+/// writing, as the sidebar does.
 struct TerminalPane: View {
     @EnvironmentObject var state: AppState
     @AppStorage("terminalHeight") private var height = 220.0
     /// The height when the drag began.
     @State private var dragStart: Double?
 
+    /// The open note's shell, or the library's when that's picked or no note is open.
+    private var note: URL? { state.terminalOnLibrary ? nil : state.openFile }
+
     var body: some View {
         VStack(spacing: 0) {
             Divider().overlay { resizeHandle }
-            TerminalHost(place: state.openFile ?? state.root, file: state.openFile, root: state.root,
+            ContextSwitch(note: state.openFile, onLibrary: note == nil) { library in
+                state.terminalOnLibrary = library
+            }
+            TerminalHost(place: note ?? state.root, file: note, root: state.root,
                          shown: state.terminalShown,
                          exited: { withAnimation { state.terminalShown = false } },
                          focusEditor: state.focusEditor)
                 .padding(.leading, 14)
                 .padding(.trailing, 4)
-                .padding(.vertical, 8)
+                .padding(.bottom, 8)
         }
         .background(Color(nsColor: Theme.background))
         // Laid out at its full height and uncovered as it slides, so the shell isn't told
@@ -46,6 +53,38 @@ struct TerminalPane: View {
                     height = min(640, max(100, start - drag.translation.height))
                 }
                 .onEnded { _ in dragStart = nil })
+    }
+}
+
+/// The open note's name and "Library", the one whose shell is showing lit in the accent;
+/// click the other to switch. Just "Library" with no note open.
+private struct ContextSwitch: View {
+    let note: URL?
+    let onLibrary: Bool
+    let pick: (_ library: Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            if let note {
+                choice(FileNode.displayName(note), lit: !onLibrary) { pick(false) }
+                    .help("Talk About This Note")
+                Text("·").foregroundStyle(.tertiary)
+            }
+            choice("Library", lit: onLibrary) { pick(true) }
+                .help("Talk About the Whole Library")
+        }
+        .appFont(12)
+        .padding(.horizontal, 14)
+        .frame(height: 26)
+    }
+
+    private func choice(_ title: String, lit: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).lineLimit(1).truncationMode(.middle)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(lit ? Color.accentColor : Color.secondary)
     }
 }
 
@@ -75,13 +114,17 @@ private struct TerminalHost: NSViewRepresentable {
             return
         }
         let terminal = shells.terminal(for: place, file: file, root: root, size: host.bounds)
+        // Typing carries over to the shell switched to; a note picked in the sidebar
+        // doesn't pull the typing down here.
+        var focus = !wasShown
         if terminal.superview !== host {
+            focus = focus || host.subviews.contains { $0 === host.window?.firstResponder }
             host.subviews.forEach { $0.removeFromSuperview() }
             terminal.frame = host.bounds
             terminal.autoresizingMask = [.width, .height]
             host.addSubview(terminal)
         }
-        if !wasShown {
+        if focus {
             DispatchQueue.main.async { host.window?.makeFirstResponder(terminal) }
         }
     }
@@ -232,7 +275,8 @@ private final class QuillTerminal: LocalProcessTerminalView {
 
 /// Startup files that zsh reads in place of yours (through `ZDOTDIR`), as VS Code's terminal
 /// does: each reads your own, then Quill's additions follow. The additions: `claude`, which
-/// tells Claude Code the note that's open, so you can ask about "this"; and starting it.
+/// tells Claude Code the note that's open (so you can ask about "this") or, in the library's
+/// shell, that the folder is your library; and starting it.
 enum ZshIntegration {
     /// Your file of the same name, read with `ZDOTDIR` where zsh would have had it.
     private static func yours(_ name: String) -> String {
@@ -259,21 +303,26 @@ enum ZshIntegration {
             [[ $HISTFILE == $QUILL_ZDOTDIR/.zsh_history ]] && HISTFILE=$QUILL_USER_ZDOTDIR/.zsh_history
             \(yours(".zshrc"))
 
-            if [[ -n $QUILL_FILE ]]; then
-              unalias claude 2>/dev/null
-              function claude {
-                # A lone word is a subcommand (claude mcp, claude update): passed on as is.
-                if [[ $# -gt 0 && $1 != -* && $1 != *' '* ]]; then
-                  command claude "$@"
-                  return
-                fi
+            unalias claude 2>/dev/null
+            function claude {
+              # A lone word is a subcommand (claude mcp, claude update): passed on as is.
+              if [[ $# -gt 0 && $1 != -* && $1 != *' '* ]]; then
+                command claude "$@"
+                return
+              fi
+              if [[ -n $QUILL_FILE ]]; then
                 command claude --add-dir "$QUILL_LIBRARY" --append-system-prompt "You were started \\
             from the terminal in Quill, a Markdown editor, where the user has the note \\"$QUILL_FILE\\" \\
             open. Their library of notes is \\"$QUILL_LIBRARY\\". When they say \\"this\\", \\"my note\\" or \\
             the like without naming a file, they mean the open note: read it before answering, as \\
             they may have changed it since you last did." "$@"
-              }
-            fi
+              else
+                command claude --append-system-prompt "You were started from the terminal in Quill, a \\
+            Markdown editor, to talk about the user's whole library of notes: the folder you're in, \\
+            \\"$QUILL_LIBRARY\\". When they say \\"my notes\\", \\"my library\\" or the like, they mean \\
+            its Markdown files; look through them before answering." "$@"
+              fi
+            }
 
             # Claude Code starts on its own at the first prompt, once all your startup files
             # have run, and leaves you at the prompt when it quits. Shells started from this
