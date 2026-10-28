@@ -21,6 +21,7 @@ On first launch, choose the Mac library in iCloud Drive (Documents › Quill) to
 - `Sources/Quill/EditorView.swift`: loading, autosave, and syncing settings into the editor
 - `Sources/Quill/FocusTextView.swift`: centered column, focus dimming, typewriter scrolling, list continuation
 - `Sources/Quill/MarkdownHighlighter.swift`: inline Markdown styling
+- `Sources/Quill/TerminalPane.swift`: the terminal under the page, one shell per note (SwiftTerm)
 - `Sources/Quill/Shared`: shared by both apps: Markdown highlighting, editing commands, fonts, the file model
 - `iOS/Sources`: the iOS app (library screens, editor, settings); `iOS/project.yml` is the Xcode project spec
 - `Resources/Fonts`: iA Writer Quattro (Sans) and Mono (SIL Open Font License); Serif is the system serif

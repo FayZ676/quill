@@ -51,6 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct QuillCommands: Commands {
     @ObservedObject var state: AppState
 
+    /// The editor, if you're typing in it: formatting shortcuts typed in the terminal
+    /// shouldn't land in the note.
+    private var editor: FocusTextView? {
+        state.textView.flatMap { $0.window?.firstResponder === $0 ? $0 : nil }
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New File") { state.newFile() }
@@ -79,15 +85,15 @@ struct QuillCommands: Commands {
         }
 
         CommandMenu("Format") {
-            Button("Bold") { state.textView?.toggleWrap("**") }
+            Button("Bold") { editor?.toggleWrap("**") }
                 .keyboardShortcut("b")
-            Button("Italic") { state.textView?.toggleWrap("_") }
+            Button("Italic") { editor?.toggleWrap("_") }
                 .keyboardShortcut("i")
-            Button("Strikethrough") { state.textView?.toggleWrap("~~") }
+            Button("Strikethrough") { editor?.toggleWrap("~~") }
                 .keyboardShortcut("x", modifiers: [.command, .shift])
-            Button("Inline Code") { state.textView?.toggleWrap("`") }
+            Button("Inline Code") { editor?.toggleWrap("`") }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
-            Button("Link") { state.textView?.insertLink() }
+            Button("Link") { editor?.insertLink() }
                 .keyboardShortcut("k")
         }
 
@@ -98,6 +104,10 @@ struct QuillCommands: Commands {
             .keyboardShortcut("s", modifiers: [.control, .command])
             Button(state.showingGraph ? "Hide Graph" : "Show Graph") { state.toggleGraph() }
                 .keyboardShortcut("g", modifiers: [.option, .command])
+            Button(state.terminalShown ? "Hide Terminal" : "Show Terminal") {
+                withAnimation { state.terminalShown.toggle() }
+            }
+            .keyboardShortcut("`", modifiers: .control)
             Divider()
             Toggle("Focus Mode", isOn: $state.focusEnabled)
                 .keyboardShortcut("d", modifiers: [.command, .shift])

@@ -30,18 +30,22 @@ struct ContentView: View {
             .clipped()
             .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
 
-            ZStack(alignment: .bottom) {
-                EditorView(state: state)
-                // Over the editor rather than in its place, so the open document keeps its
-                // caret and undo history for when you come back.
-                if state.showingGraph {
-                    GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
-                } else {
-                    if state.openFile == nil {
-                        EmptyEditor()
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
+                    EditorView(state: state)
+                    // Over the editor rather than in its place, so the open document keeps its
+                    // caret and undo history for when you come back.
+                    if state.showingGraph {
+                        GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
+                    } else {
+                        if state.openFile == nil {
+                            EmptyEditor()
+                        }
+                        WordCount(stats: state.stats, chrome: state.chrome)
                     }
-                    WordCount(stats: state.stats, chrome: state.chrome)
                 }
+                // Always there, if folded away, so its shells keep running while it's closed.
+                TerminalPane()
             }
             // Gives way to the sidebar rather than pushing it off the window.
             .frame(minWidth: 0, maxWidth: .infinity)
@@ -81,14 +85,18 @@ struct ContentView: View {
         .searchPanel(isPresented: $state.showingCheatSheet) { CheatSheet() }
         .sheet(item: $state.newItem) { NewItemPanel(item: $0) }
         // Like iA Writer, the library slides away once you start typing and stays put
-        // until you bring it back. A turn later, as `$hidden` fires before `hidden` changes:
-        // sliding the sidebar right away redraws the bars while they still read as shown,
-        // and they'd stay that way.
+        // until you bring it back, and so does the terminal. A turn later, as `$hidden`
+        // fires before `hidden` changes: sliding the sidebar right away redraws the bars
+        // while they still read as shown, and they'd stay that way.
         .onReceive(state.chrome.$hidden) { hidden in
             guard hidden else { return }
             DispatchQueue.main.async {
-                if state.chrome.hidden && state.sidebarShown {
+                guard state.chrome.hidden else { return }
+                if state.sidebarShown {
                     withAnimation { state.sidebarShown = false }
+                }
+                if state.terminalShown {
+                    withAnimation { state.terminalShown = false }
                 }
             }
         }
@@ -663,6 +671,11 @@ private struct WordCount: View {
                 .foregroundStyle(.tertiary)
                 .allowsHitTesting(false)
             CheatSheetButton()
+            Text("·")
+                .appFont(13)
+                .foregroundStyle(.tertiary)
+                .allowsHitTesting(false)
+            TerminalButton()
         }
         .padding(.leading, 12)
         .padding(.trailing, 8)

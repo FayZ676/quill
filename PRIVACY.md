@@ -10,6 +10,8 @@ Quill doesn't collect, store or share any of your data.
 
 **No tracking.** Quill has no accounts, no analytics, no ads and no third-party code. It makes no network requests of its own.
 
+**The terminal.** Quill's terminal runs your own shell, and the programs you start in it (an AI tool, say) do whatever they do under their own terms. Quill doesn't see or send what passes through it.
+
 **Children.** Quill collects no information from anyone, including children.
 
 **Changes.** If this policy ever changes, the new version will be posted here with a new effective date.
