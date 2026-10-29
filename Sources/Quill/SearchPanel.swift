@@ -116,8 +116,8 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
 }
 
 extension View {
-    /// Floats a search panel near the top of the window, as Spotlight does; Escape or a click
-    /// anywhere else puts it away. Centred in what's right of `leading`, as over the page beside
+    /// Floats a search panel in the middle of the window; Escape or a click anywhere else puts
+    /// it away. Centred in what's right of `leading`, as over the page beside
     /// the sidebar, so long as it fits there; the click outside still reaches the whole window.
     func searchPanel<Panel: View>(isPresented: Binding<Bool>, leading: CGFloat = 0,
                                   @ViewBuilder panel: @escaping () -> Panel) -> some View {
@@ -126,7 +126,7 @@ extension View {
                 GeometryReader { geometry in
                     // Never so far over that the panel runs off the window's right edge.
                     let inset = min(leading, max(0, geometry.size.width - 480 - 40))
-                    ZStack(alignment: .top) {
+                    ZStack {
                         // All but clear, so it still takes the click.
                         Color.black.opacity(0.001)
                             .onTapGesture { isPresented.wrappedValue = false }
@@ -135,7 +135,7 @@ extension View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3)))
                             .shadow(color: .black.opacity(0.3), radius: 24, y: 8)
-                            .padding(.top, 60)
+                            .padding(.vertical, 60)
                             .frame(maxWidth: .infinity)
                             .padding(.leading, inset)
                     }
