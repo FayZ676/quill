@@ -80,7 +80,7 @@ struct CheatSheetButton: View {
 /// How to write each kind of formatting, searchable.
 struct CheatSheet: View {
     var body: some View {
-        SearchPanel(prompt: "Search, like “bold” or “list”", height: 440, matches: matches, section: \.section) {
+        SearchPanel(prompt: "Search, like “bold” or “list”", matches: matches, section: \.section) {
             EntryRow(entry: $0)
         }
     }

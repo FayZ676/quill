@@ -9,7 +9,6 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
     @Environment(\.closeSearchPanel) private var closeFloating
     let prompt: String
     let empty: String
-    let height: CGFloat
     /// The items that hold what's typed, in order.
     let matches: (String) -> [Item]
     /// The heading of the group an item is in, for a list in groups.
@@ -22,12 +21,11 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
     @State private var keys: Any?
     @FocusState private var typing: Bool
 
-    init(prompt: String, empty: String = "Nothing Matches", height: CGFloat = 360,
+    init(prompt: String, empty: String = "Nothing Matches",
          matches: @escaping (String) -> [Item], section: @escaping (Item) -> String? = { _ in nil },
          pick: ((Item) -> Void)? = nil, @ViewBuilder row: @escaping (Item) -> Row) {
         self.prompt = prompt
         self.empty = empty
-        self.height = height
         self.matches = matches
         self.section = section
         self.pick = pick
@@ -85,7 +83,7 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
                 }
             }
         }
-        .frame(width: 480, height: height)
+        .frame(width: 480, height: 440)
         .background(Color(nsColor: Theme.background))
         .onChange(of: query) { _ in picked = 0 }
         .onAppear {
