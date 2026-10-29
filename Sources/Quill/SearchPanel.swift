@@ -117,25 +117,25 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
 
 extension View {
     /// Floats a search panel in the middle of `area`, a frame in the window's (global)
-    /// coordinates such as the page's, or of the whole window without one. Escape or a click
-    /// anywhere else in the window puts it away.
+    /// coordinates such as the page's, or of the whole window where it doesn't fit there. Escape
+    /// or a click anywhere else in the window puts it away.
     func searchPanel<Panel: View>(isPresented: Binding<Bool>, over area: CGRect = .zero,
                                   @ViewBuilder panel: @escaping () -> Panel) -> some View {
         overlay {
             if isPresented.wrappedValue {
                 GeometryReader { geometry in
-                    let frame = panelFrame(over: area, in: geometry.frame(in: .global))
-                    ZStack(alignment: .topLeading) {
+                    let window = geometry.frame(in: .global)
+                    ZStack {
                         // All but clear, so it still takes the click.
                         Color.black.opacity(0.001)
                             .onTapGesture { isPresented.wrappedValue = false }
-                        panel()
-                            .environment(\.closeSearchPanel) { isPresented.wrappedValue = false }
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3)))
-                            .shadow(color: .black.opacity(0.3), radius: 24, y: 8)
-                            .frame(width: frame.width, height: frame.height)
-                            .offset(x: frame.minX, y: frame.minY)
+                        CenteredIn(area: area.offsetBy(dx: -window.minX, dy: -window.minY)) {
+                            panel()
+                                .environment(\.closeSearchPanel) { isPresented.wrappedValue = false }
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3)))
+                                .shadow(color: .black.opacity(0.3), radius: 24, y: 8)
+                        }
                     }
                 }
                 .ignoresSafeArea()
@@ -144,18 +144,24 @@ extension View {
     }
 }
 
-/// The frame, in the overlay's own coordinates, to centre the panel in: `area` where the panel
-/// fits across it, otherwise widened toward the window's left so it doesn't run off the right.
-private func panelFrame(over area: CGRect, in window: CGRect) -> CGRect {
-    let whole = CGRect(origin: .zero, size: window.size)
-    guard !area.isEmpty else { return whole }
-    var frame = area.offsetBy(dx: -window.minX, dy: -window.minY).intersection(whole)
-    let short = 480 + 40 - frame.width
-    if short > 0 {
-        frame.origin.x = max(0, frame.minX - short)
-        frame.size.width = min(whole.width, frame.width + short)
+/// Puts its one view in the middle of `area`, given in its own coordinates, when the view fits
+/// there with some room around it, as on a page with the terminal or sidebar open in a small
+/// window; in the middle of all of it otherwise.
+private struct CenteredIn: Layout {
+    let area: CGRect
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
     }
-    return frame
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let view = subviews.first else { return }
+        let size = view.sizeThatFits(.unspecified)
+        let fits = area.width >= size.width + 40 && area.height >= size.height + 40
+        let center = fits ? CGPoint(x: bounds.minX + area.midX, y: bounds.minY + area.midY)
+                          : CGPoint(x: bounds.midX, y: bounds.midY)
+        view.place(at: center, anchor: .center, proposal: ProposedViewSize(size))
+    }
 }
 
 private struct CloseSearchPanelKey: EnvironmentKey {
