@@ -6,6 +6,9 @@ struct ContentView: View {
     @AppStorage("sidebarWidth") private var sidebarWidth = 240.0
     /// The height of the window buttons' strip above Quill's bar; none in full screen.
     @State private var buttonStripHeight: CGFloat = 0
+    /// Where the page is in the window, under the bars and beside the sidebar and terminal,
+    /// for Go To and the cheat sheet to open in the middle of.
+    @State private var page = CGRect.zero
 
     var body: some View {
         HStack(spacing: 0) {
@@ -44,6 +47,11 @@ struct ContentView: View {
                         WordCount(stats: state.stats, chrome: state.chrome)
                     }
                 }
+                .background(GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { page = geometry.frame(in: .global) }
+                        .onChange(of: geometry.frame(in: .global)) { page = $0 }
+                })
                 // Always there, if folded away, so its shells keep running while it's closed.
                 TerminalPane()
             }
@@ -78,12 +86,13 @@ struct ContentView: View {
                 .onChange(of: geometry.safeAreaInsets.top) { buttonStripHeight = $0 }
         })
         .background(Color(nsColor: Theme.background).ignoresSafeArea())
-        // Over the page rather than the whole window, as the sidebar would push them off it.
-        .searchPanel(isPresented: $state.goingTo, leading: state.sidebarShown ? sidebarWidth : 0) {
+        // Over the page rather than the whole window, as the bars and sidebar would push them
+        // off its middle.
+        .searchPanel(isPresented: $state.goingTo, over: page) {
             PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items) { state.goTo($0) }
         }
         // From here rather than the button, so it opens just as Go To does.
-        .searchPanel(isPresented: $state.showingCheatSheet, leading: state.sidebarShown ? sidebarWidth : 0) { CheatSheet() }
+        .searchPanel(isPresented: $state.showingCheatSheet, over: page) { CheatSheet() }
         .sheet(item: $state.newItem) { NewItemPanel(item: $0) }
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back, and so does the terminal. A turn later, as `$hidden`

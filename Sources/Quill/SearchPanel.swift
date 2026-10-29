@@ -116,17 +116,16 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
 }
 
 extension View {
-    /// Floats a search panel in the middle of the window; Escape or a click anywhere else puts
-    /// it away. Centred in what's right of `leading`, as over the page beside
-    /// the sidebar, so long as it fits there; the click outside still reaches the whole window.
-    func searchPanel<Panel: View>(isPresented: Binding<Bool>, leading: CGFloat = 0,
+    /// Floats a search panel in the middle of `area`, a frame in the window's (global)
+    /// coordinates such as the page's, or of the whole window without one. Escape or a click
+    /// anywhere else in the window puts it away.
+    func searchPanel<Panel: View>(isPresented: Binding<Bool>, over area: CGRect = .zero,
                                   @ViewBuilder panel: @escaping () -> Panel) -> some View {
         overlay {
             if isPresented.wrappedValue {
                 GeometryReader { geometry in
-                    // Never so far over that the panel runs off the window's right edge.
-                    let inset = min(leading, max(0, geometry.size.width - 480 - 40))
-                    ZStack {
+                    let frame = panelFrame(over: area, in: geometry.frame(in: .global))
+                    ZStack(alignment: .topLeading) {
                         // All but clear, so it still takes the click.
                         Color.black.opacity(0.001)
                             .onTapGesture { isPresented.wrappedValue = false }
@@ -135,15 +134,28 @@ extension View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3)))
                             .shadow(color: .black.opacity(0.3), radius: 24, y: 8)
-                            .padding(.vertical, 60)
-                            .frame(maxWidth: .infinity)
-                            .padding(.leading, inset)
+                            .frame(width: frame.width, height: frame.height)
+                            .offset(x: frame.minX, y: frame.minY)
                     }
                 }
                 .ignoresSafeArea()
             }
         }
     }
+}
+
+/// The frame, in the overlay's own coordinates, to centre the panel in: `area` where the panel
+/// fits across it, otherwise widened toward the window's left so it doesn't run off the right.
+private func panelFrame(over area: CGRect, in window: CGRect) -> CGRect {
+    let whole = CGRect(origin: .zero, size: window.size)
+    guard !area.isEmpty else { return whole }
+    var frame = area.offsetBy(dx: -window.minX, dy: -window.minY).intersection(whole)
+    let short = 480 + 40 - frame.width
+    if short > 0 {
+        frame.origin.x = max(0, frame.minX - short)
+        frame.size.width = min(whole.width, frame.width + short)
+    }
+    return frame
 }
 
 private struct CloseSearchPanelKey: EnvironmentKey {
