@@ -78,11 +78,12 @@ struct ContentView: View {
                 .onChange(of: geometry.safeAreaInsets.top) { buttonStripHeight = $0 }
         })
         .background(Color(nsColor: Theme.background).ignoresSafeArea())
-        .searchPanel(isPresented: $state.goingTo) {
+        // Over the page rather than the whole window, as the sidebar would push them off it.
+        .searchPanel(isPresented: $state.goingTo, leading: state.sidebarShown ? sidebarWidth : 0) {
             PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items) { state.goTo($0) }
         }
         // From here rather than the button, so it opens just as Go To does.
-        .searchPanel(isPresented: $state.showingCheatSheet) { CheatSheet() }
+        .searchPanel(isPresented: $state.showingCheatSheet, leading: state.sidebarShown ? sidebarWidth : 0) { CheatSheet() }
         .sheet(item: $state.newItem) { NewItemPanel(item: $0) }
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back, and so does the terminal. A turn later, as `$hidden`
