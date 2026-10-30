@@ -54,7 +54,7 @@ final class AppState: ObservableObject {
     /// Kept separate so per-keystroke word counts don't re-render the sidebar.
     let stats = Stats()
     let chrome = ChromeFader()
-    private lazy var recents = Recents(defaults)
+    private var recents: Recents
     weak var textView: FocusTextView?
     /// Installed by the editor; writes any unsaved text to disk.
     var flushSave: () -> Void = {}
@@ -88,13 +88,19 @@ final class AppState: ObservableObject {
         terminalAgent = TerminalAgent(rawValue: defaults.string(forKey: "terminalAgent") ?? "") ?? .claude
         expanded = Set((defaults.stringArray(forKey: "expanded") ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) })
 
-        if let path = defaults.string(forKey: "root"), FileManager.default.fileExists(atPath: path) {
-            root = URL(fileURLWithPath: path, isDirectory: true)
+        let root = if let path = defaults.string(forKey: "root"), FileManager.default.fileExists(atPath: path) {
+            URL(fileURLWithPath: path, isDirectory: true)
         } else {
-            root = Self.createDefaultLibrary()
+            Self.createDefaultLibrary()
         }
+        self.root = root
+        recents = Recents(root: root, defaults: defaults)
+        startRecents()
         startWatching()
         reloadTree()
+        // A Mac in iCloud Drive doesn't always bring down a changed file it hasn't been using.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
+                                               queue: .main) { [weak self] _ in self?.recents.reload() }
 
         if let last = defaults.string(forKey: "lastFile"), FileManager.default.fileExists(atPath: last) {
             let url = URL(fileURLWithPath: last, isDirectory: false)
@@ -119,6 +125,7 @@ final class AppState: ObservableObject {
         if let open = openFile, !FileManager.default.fileExists(atPath: open.path) {
             openFile = nil
         }
+        recents.reload()
         recheck?.cancel()
         // One scan at a time; asks made during one get a single scan after it.
         guard !scanning else { return rescan = true }
@@ -186,6 +193,7 @@ final class AppState: ObservableObject {
             selection = nil
             openFile = nil
         }
+        startRecents()
         startWatching()
         reloadTree()
     }
@@ -448,7 +456,7 @@ final class AppState: ObservableObject {
         }
         if let sel = selection, let moved = rebase(sel, from: old, to: new) { selection = moved }
         expanded = Set(expanded.map { rebase($0, from: old, to: new) ?? $0 })
-        recents.relocate { rebase($0, from: old, to: new) }
+        recents.relocate { [self] in rebase($0, from: old, to: new) }
     }
 
     private func selectionChanged() {
@@ -460,6 +468,17 @@ final class AppState: ObservableObject {
         flushSave()
         openFile = url
         defaults.set(url.path, forKey: "lastFile")
+    }
+
+    /// Shares the notes opened most recently with every device using this library, and
+    /// opens here a note just opened on another of them.
+    private func startRecents() {
+        if recents.root != root { recents = Recents(root: root, defaults: defaults) }
+        recents.follow = { [weak self] note in
+            guard let self, FileManager.default.fileExists(atPath: note.path) else { return false }
+            if note != self.openFile || self.showingGraph { self.openNote(note) }
+            return true
+        }
     }
 
     private func startWatching() {

@@ -21,7 +21,7 @@ final class AppState: ObservableObject {
     static let shared = AppState()
 
     private let defaults = UserDefaults.standard
-    private lazy var recents = Recents(defaults)
+    private var recents: Recents
     private static let localLibrary = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
     @Published private(set) var root: URL
@@ -89,6 +89,8 @@ final class AppState: ObservableObject {
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         choosingLibrary = !defaults.bool(forKey: "libraryChosen")
         root = Self.localLibrary
+        recents = Recents(root: Self.localLibrary, defaults: defaults)
+        startRecents()
 
         if let bookmark = defaults.data(forKey: "rootBookmark"), let url = Self.resolve(bookmark) {
             open(url)
@@ -128,6 +130,7 @@ final class AppState: ObservableObject {
         if let gone = pages.firstIndex(where: { !FileManager.default.fileExists(atPath: $0.url.path) }) {
             pages.removeSubrange(gone...)
         }
+        recents.reload()
         recheck?.cancel()
         // One scan at a time; asks made during one get a single scan after it.
         guard !scanning else { return rescan = true }
@@ -239,6 +242,7 @@ final class AppState: ObservableObject {
         scopedRoot = nil
         defaults.removeObject(forKey: "rootBookmark")
         root = Self.localLibrary
+        startRecents()
         loading = true
         let fm = FileManager.default
         if (try? fm.contentsOfDirectory(atPath: root.path))?.isEmpty ?? true {
@@ -402,9 +406,21 @@ final class AppState: ObservableObject {
     private func open(_ url: URL) {
         scopedRoot = url
         root = URL(fileURLWithPath: url.path, isDirectory: true)
+        startRecents()
         loading = true
         pages = []
         reloadTree()
+    }
+
+    /// Shares the notes opened most recently with every device using this library, and
+    /// opens here a note just opened on another of them.
+    private func startRecents() {
+        if recents.root != root { recents = Recents(root: root, defaults: defaults) }
+        recents.follow = { [weak self] note in
+            guard let self, FileManager.default.fileExists(atPath: note.path) else { return false }
+            if self.pages.last?.url != note { self.reveal(note) }
+            return true
+        }
     }
 
     private func libraryChosen() {
@@ -442,7 +458,7 @@ final class AppState: ObservableObject {
             pages.removeSubrange(i...)
         }
         if let first = pages.first, !first.isGraph, !isInside(first.url, root) { pages = [] }
-        recents.relocate { rebase($0, from: old, to: new) }
+        recents.relocate { [self] in rebase($0, from: old, to: new) }
         rememberLocation()
     }
 
