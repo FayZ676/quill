@@ -28,6 +28,9 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!-- Programs run in the terminal pane, such as Claude Code's voice mode, record through Quill. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Programs you run in Quill's terminal, such as an AI assistant's voice mode, use the microphone to hear you.</string>
     <!-- Sparkle: the feed is attached to every GitHub release, so "latest" is always current. -->
     <key>SUFeedURL</key>
     <string>https://github.com/FayZ676/quill/releases/latest/download/appcast.xml</string>

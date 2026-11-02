@@ -69,7 +69,7 @@ if [ -n "$SIGN_IDENTITY" ]; then
   "${SIGN[@]}" --preserve-metadata=entitlements "$FW/XPCServices/Downloader.xpc"
   "${SIGN[@]}" "$FW/Autoupdate" "$FW/Updater.app"
   "${SIGN[@]}" "$APPDIR/Contents/Frameworks/Sparkle.framework"
-  "${SIGN[@]}" "$APPDIR"
+  "${SIGN[@]}" --entitlements Resources/Quill.entitlements "$APPDIR"
 else
   echo "==> Signing (ad hoc; no Developer ID Application certificate found)"
   codesign --force --deep --sign - "$APPDIR"
