@@ -22,6 +22,12 @@ enum MoreMenu {
         menu.addItem(ActionItem("Bigger") { state.fontSize = min(32, state.fontSize + 1) })
 
         menu.addItem(.separator())
+        menu.addItem(header("Appearance"))
+        for appearance in Appearance.allCases {
+            menu.addItem(ActionItem(appearance.rawValue, on: state.appearance == appearance) { state.appearance = appearance })
+        }
+
+        menu.addItem(.separator())
         menu.addItem(header("Spelling and Grammar"))
         menu.addItem(toggle("Check Spelling While Typing", \.checkSpelling, state))
         menu.addItem(toggle("Check Grammar With Spelling", \.checkGrammar, state))
