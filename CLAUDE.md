@@ -57,10 +57,12 @@ Sparkle's "update available" prompt.
 
     VERSION=X.Y.Z UPLOAD=1 iOS/build.sh
 
-This archives the app and uploads it to App Store Connect. It needs `ASC_KEY_ID` and
-`ASC_ISSUER_ID` (see the comment at the top of `iOS/build.sh`). Ship iOS only when asked:
-a Mac release doesn't imply an iOS upload. Keep iOS on the same version number as the Mac
-app when both ship.
+This archives the app and uploads it to App Store Connect with the API key in
+`~/.appstoreconnect/config.env`. Then finish in App Store Connect with the `app-store-connect`
+skill: create the version, write What's New in the same voice as the release notes above,
+attach the build, check the screenshots still show the app as it is, and submit for review.
+Ship iOS only when asked: a Mac release doesn't imply an iOS upload. Keep iOS on the same
+version number as the Mac app when both ship.
 
 ## Conventions
 

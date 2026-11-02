@@ -10,7 +10,8 @@
 #   DEVICE    devicectl identifier or name (default: the first available paired iPhone/iPad)
 #   INSTALL=0 build only
 #   UPLOAD=1  archive and upload; needs an App Store Connect API key in ASC_KEY_ID and
-#             ASC_ISSUER_ID (the .p8 in ~/.appstoreconnect/private_keys, or ASC_KEY_PATH)
+#             ASC_ISSUER_ID, from the environment or ~/.appstoreconnect/config.env
+#             (the .p8 in ~/.appstoreconnect/private_keys, or ASC_KEY_PATH)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -36,6 +37,11 @@ echo "==> Generating Xcode project"
 VERSION=$VERSION BUILD=$BUILD xcodegen generate --quiet
 
 if [ "$UPLOAD" = 1 ]; then
+  CONFIG=$HOME/.appstoreconnect/config.env
+  if [ -f "$CONFIG" ]; then
+    ASC_KEY_ID=${ASC_KEY_ID:-$(sed -n 's/^ASC_KEY_ID=//p' "$CONFIG")}
+    ASC_ISSUER_ID=${ASC_ISSUER_ID:-$(sed -n 's/^ASC_ISSUER_ID=//p' "$CONFIG")}
+  fi
   : "${ASC_KEY_ID:?set ASC_KEY_ID}" "${ASC_ISSUER_ID:?set ASC_ISSUER_ID}"
   ASC_KEY_PATH=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8}
   AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH"
