@@ -276,6 +276,7 @@ private struct SidebarToggle: View {
 }
 
 /// Back and Forward through the notes opened, as in a browser; faded when there's nowhere to go.
+/// Close together and set apart from the sidebar toggle, so they read as a pair.
 private struct HistoryButtons: View {
     @EnvironmentObject var state: AppState
 
@@ -284,11 +285,12 @@ private struct HistoryButtons: View {
             step("chevron.left", help: "Back (⌘[)", enabled: !state.backStack.isEmpty, state.goBack)
             step("chevron.right", help: "Forward (⌘])", enabled: !state.forwardStack.isEmpty, state.goForward)
         }
+        .padding(.leading, 8)
     }
 
     private func step(_ symbol: String, help: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).toolbarIcon()
+            Image(systemName: symbol).toolbarIcon(width: 22)
         }
         .buttonStyle(.bare)
         .disabled(!enabled)
@@ -808,11 +810,12 @@ private struct WordCount: View {
 private extension Image {
     /// Toolbar symbols at a size that's easy to see and hit; the stock ones are tiny.
     /// `nudge` lifts a symbol whose pencil or badge pushes its body down, so the shapes
-    /// line up by eye rather than by bounding box.
-    func toolbarIcon(nudge: CGFloat = 0) -> some View {
+    /// line up by eye rather than by bounding box. A narrow symbol in a pair takes a
+    /// narrower `width`, so the two sit close.
+    func toolbarIcon(nudge: CGFloat = 0, width: CGFloat = 34) -> some View {
         font(.system(size: 20, weight: .regular))
             .offset(y: nudge)
-            .frame(minWidth: 34, minHeight: 30)
+            .frame(minWidth: width, minHeight: 30)
     }
 }
 
