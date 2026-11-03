@@ -140,6 +140,7 @@ private struct DetailBar: View {
     var body: some View {
         HStack(spacing: 6) {
             SidebarToggle()
+            HistoryButtons()
             Spacer()
             if !state.showingGraph {
                 FocusToggle()
@@ -271,6 +272,28 @@ private struct SidebarToggle: View {
         }
         .buttonStyle(.bare)
         .help("Show or Hide Sidebar (⌃⌘S)")
+    }
+}
+
+/// Back and Forward through the notes opened, as in a browser; faded when there's nowhere to go.
+private struct HistoryButtons: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        HStack(spacing: 0) {
+            step("chevron.left", help: "Back (⌘[)", enabled: !state.backStack.isEmpty, state.goBack)
+            step("chevron.right", help: "Forward (⌘])", enabled: !state.forwardStack.isEmpty, state.goForward)
+        }
+    }
+
+    private func step(_ symbol: String, help: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).toolbarIcon()
+        }
+        .buttonStyle(.bare)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
+        .help(help)
     }
 }
 

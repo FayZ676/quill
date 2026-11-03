@@ -19,6 +19,12 @@ final class AppState: ObservableObject {
     @Published private(set) var openFile: URL?
     /// The graph of notes stands in for the editor.
     @Published private(set) var showingGraph = false
+    /// The notes opened before the open one, the latest last, for Back; and the ones gone
+    /// back from, for Forward. As in a browser, opening a note clears Forward.
+    @Published private(set) var backStack: [URL] = []
+    @Published private(set) var forwardStack: [URL] = []
+    /// The note opening is a step back or forward, not a new place in the history.
+    private var steppingHistory = false
     @Published private(set) var graph = LinkGraph()
 
     @Published var focusEnabled: Bool { didSet { defaults.set(focusEnabled, forKey: "focusEnabled") } }
@@ -200,6 +206,8 @@ final class AppState: ObservableObject {
             selection = nil
             openFile = nil
         }
+        backStack = []
+        forwardStack = []
         startRecents()
         startWatching()
         reloadTree()
@@ -280,6 +288,24 @@ final class AppState: ObservableObject {
     func openNote(_ url: URL) {
         selection = url
         DispatchQueue.main.async { [weak self] in self?.focusEditor() }
+    }
+
+    // MARK: History
+
+    func goBack() { step(from: \.backStack, to: \.forwardStack) }
+    func goForward() { step(from: \.forwardStack, to: \.backStack) }
+
+    /// Opens the latest note in one list, leaving the open one at the end of the other.
+    private func step(from: ReferenceWritableKeyPath<AppState, [URL]>, to: ReferenceWritableKeyPath<AppState, [URL]>) {
+        // Notes deleted since are skipped.
+        while let url = self[keyPath: from].popLast() {
+            guard url != openFile, FileManager.default.fileExists(atPath: url.path) else { continue }
+            if let open = openFile { self[keyPath: to].append(open) }
+            steppingHistory = true
+            openNote(url)
+            steppingHistory = false
+            return
+        }
     }
 
     /// After a note or folder moves from `old` to `new`, points every link at where its note
@@ -431,6 +457,8 @@ final class AppState: ObservableObject {
         do { try FileManager.default.trashItem(at: url, resultingItemURL: nil) } catch { return present(error) }
         if let open = openFile, isInside(open, url) || open == url { openFile = nil }
         if let sel = selection, isInside(sel, url) || sel == url { selection = nil }
+        backStack.removeAll { $0 == url || isInside($0, url) }
+        forwardStack.removeAll { $0 == url || isInside($0, url) }
         reloadTree()
     }
 
@@ -462,6 +490,8 @@ final class AppState: ObservableObject {
             defaults.set(moved.path, forKey: "lastFile")
         }
         if let sel = selection, let moved = rebase(sel, from: old, to: new) { selection = moved }
+        backStack = backStack.map { rebase($0, from: old, to: new) ?? $0 }
+        forwardStack = forwardStack.map { rebase($0, from: old, to: new) ?? $0 }
         expanded = Set(expanded.map { rebase($0, from: old, to: new) ?? $0 })
         recents.relocate { [self] in rebase($0, from: old, to: new) }
     }
@@ -473,6 +503,10 @@ final class AppState: ObservableObject {
         recents.viewed(url)
         guard url != openFile else { return }
         flushSave()
+        if !steppingHistory {
+            if let open = openFile { backStack.append(open) }
+            forwardStack = []
+        }
         openFile = url
         defaults.set(url.path, forKey: "lastFile")
     }

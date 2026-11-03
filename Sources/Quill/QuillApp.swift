@@ -38,6 +38,15 @@ struct QuillApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        // A mouse's back and forward buttons step through the notes opened, as in a browser.
+        NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
+            switch event.buttonNumber {
+            case 3: AppState.shared.goBack()
+            case 4: AppState.shared.goForward()
+            default: return event
+            }
+            return nil
+        }
         Fonts.registerBundled()
         AppState.shared.appearance.apply()
     }
@@ -110,6 +119,13 @@ struct QuillCommands: Commands {
         }
 
         CommandGroup(before: .toolbar) {
+            Button("Back") { state.goBack() }
+                .keyboardShortcut("[")
+                .disabled(state.backStack.isEmpty)
+            Button("Forward") { state.goForward() }
+                .keyboardShortcut("]")
+                .disabled(state.forwardStack.isEmpty)
+            Divider()
             Button(state.sidebarShown ? "Hide Sidebar" : "Show Sidebar") {
                 withAnimation { state.sidebarShown.toggle() }
             }
