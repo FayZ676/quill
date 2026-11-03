@@ -214,6 +214,9 @@ final class FocusTextView: NSTextView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        // Something drawn over the page, like the word count's buttons, keeps its own cursor
+        // rather than getting the I-beam on every move.
+        if let hit = window?.contentView?.hitTest(event.locationInWindow), !hit.isDescendant(of: self) { return }
         super.mouseMoved(with: event)
         if taskBox(at: event) != nil || commandOverLink(event) { NSCursor.pointingHand.set() }
     }
