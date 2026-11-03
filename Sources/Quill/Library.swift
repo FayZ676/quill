@@ -119,6 +119,7 @@ final class AppState: ObservableObject {
             let url = URL(fileURLWithPath: last, isDirectory: false)
             selection = url
             openFile = url
+            expandAncestors(of: url)
         }
     }
 
@@ -509,6 +510,8 @@ final class AppState: ObservableObject {
         }
         openFile = url
         defaults.set(url.path, forKey: "lastFile")
+        // Shows where the note lives, as VS Code's explorer does; the sidebar scrolls to it.
+        expandAncestors(of: url)
     }
 
     /// Shares the notes opened most recently with every device using this library, and
