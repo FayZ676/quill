@@ -81,72 +81,72 @@ struct QuillCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New File") { state.newFile() }
-                .keyboardShortcut("n")
+                .keyboardShortcut(Shortcuts.newFile)
             Button("New Folder") { state.newFolder() }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .keyboardShortcut(Shortcuts.newFolder)
             Button("Go To…") { state.goingTo = true }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .keyboardShortcut(Shortcuts.goTo)
             Divider()
             Button("Open Folder…") { state.chooseRoot() }
-                .keyboardShortcut("o")
+                .keyboardShortcut(Shortcuts.openFolder)
         }
 
         CommandGroup(replacing: .saveItem) {
             Button("Save") { state.flushSave() }
-                .keyboardShortcut("s")
+                .keyboardShortcut(Shortcuts.save)
             Button("Rename…") { state.currentItem.map(state.beginRename) }
                 .disabled(state.currentItem == nil)
             Button("Reveal in Finder") { state.currentItem.map(state.reveal) }
-                .keyboardShortcut("r", modifiers: [.command, .option])
+                .keyboardShortcut(Shortcuts.reveal)
                 .disabled(state.currentItem == nil)
             Divider()
             Button("Move to Trash") { state.currentItem.map(state.trash) }
-                .keyboardShortcut(.delete, modifiers: [.command, .option])
+                .keyboardShortcut(Shortcuts.trash)
                 .disabled(state.currentItem == nil)
         }
 
         CommandMenu("Format") {
             Button("Bold") { editor?.toggleWrap("**") }
-                .keyboardShortcut("b")
+                .keyboardShortcut(Shortcuts.bold)
             Button("Italic") { editor?.toggleWrap("_") }
-                .keyboardShortcut("i")
+                .keyboardShortcut(Shortcuts.italic)
             Button("Strikethrough") { editor?.toggleWrap("~~") }
-                .keyboardShortcut("x", modifiers: [.command, .shift])
+                .keyboardShortcut(Shortcuts.strikethrough)
             Button("Inline Code") { editor?.toggleWrap("`") }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .keyboardShortcut(Shortcuts.code)
             Button("Link") { editor?.insertLink() }
-                .keyboardShortcut("k")
+                .keyboardShortcut(Shortcuts.link)
         }
 
         CommandGroup(before: .toolbar) {
             Button("Back") { state.goBack() }
-                .keyboardShortcut("[")
+                .keyboardShortcut(Shortcuts.back)
                 .disabled(state.backStack.isEmpty)
             Button("Forward") { state.goForward() }
-                .keyboardShortcut("]")
+                .keyboardShortcut(Shortcuts.forward)
                 .disabled(state.forwardStack.isEmpty)
             Divider()
             Button(state.sidebarShown ? "Hide Sidebar" : "Show Sidebar") {
                 withAnimation { state.sidebarShown.toggle() }
             }
-            .keyboardShortcut("s", modifiers: [.control, .command])
+            .keyboardShortcut(Shortcuts.sidebar)
             Button(state.showingGraph ? "Hide Graph" : "Show Graph") { state.toggleGraph() }
-                .keyboardShortcut("g", modifiers: [.option, .command])
+                .keyboardShortcut(Shortcuts.graph)
             Button(state.terminalShown ? "Hide Terminal" : "Show Terminal") {
                 withAnimation { state.terminalShown.toggle() }
             }
-            .keyboardShortcut("`", modifiers: .control)
+            .keyboardShortcut(Shortcuts.terminal)
             Picker("Start in Terminal", selection: $state.terminalAgent) {
                 ForEach(TerminalAgent.allCases) { Text($0.rawValue).tag($0) }
             }
             Divider()
             Toggle("Focus Mode", isOn: $state.focusEnabled)
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .keyboardShortcut(Shortcuts.focus)
             Picker("Focus On", selection: $state.focusStyle) {
                 ForEach(FocusStyle.allCases) { Text($0.rawValue).tag($0) }
             }
             Toggle("Typewriter Scrolling", isOn: $state.typewriter)
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .keyboardShortcut(Shortcuts.typewriter)
             Divider()
             Button("Collapse All Folders") { state.expanded = [] }
                 .disabled(state.expanded.isEmpty)
@@ -155,16 +155,21 @@ struct QuillCommands: Commands {
                 ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
             }
             Button("Bigger") { resizeText(1) }
-                .keyboardShortcut("=")
+                .keyboardShortcut(Shortcuts.bigger)
             Button("Smaller") { resizeText(-1) }
-                .keyboardShortcut("-")
+                .keyboardShortcut(Shortcuts.smaller)
             Button("Actual Size") { resizeText(0) }
-                .keyboardShortcut("0")
+                .keyboardShortcut(Shortcuts.actualSize)
             Divider()
             Picker("Appearance", selection: $state.appearance) {
                 ForEach(Appearance.allCases) { Text($0.rawValue).tag($0) }
             }
             Divider()
+        }
+
+        CommandGroup(before: .help) {
+            Button("Cheat Sheet") { state.showingCheatSheet.toggle() }
+                .keyboardShortcut(Shortcuts.cheatSheet)
         }
     }
 }

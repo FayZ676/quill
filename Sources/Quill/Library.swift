@@ -41,7 +41,7 @@ final class AppState: ObservableObject {
     @Published var sidebarShown = true
     /// The Go To panel, for finding a document or folder by its path.
     @Published var goingTo = false
-    /// The Markdown cheat sheet, opened from the button by the word count.
+    /// The cheat sheet of shortcuts and Markdown, opened from the button by the word count or ⌘/.
     @Published var showingCheatSheet = false
     /// The terminal under the page. Animate changes so it slides.
     @Published var terminalShown = false
