@@ -576,7 +576,9 @@ final class AppState: ObservableObject {
     private static let welcomeText = """
     # Welcome to Quill
 
-    Quill is a quiet place to write. Your documents are plain **Markdown** files in a folder on your Mac, so they're yours forever.
+    Quill is a quiet place to write. Your documents are plain **Markdown** files in a folder on your Mac, so they're yours forever. Everything saves automatically.
+
+    Press ⌘/ at any time for every shortcut and all the Markdown, or click ⌘ by the word count.
 
     ## Focus
 
@@ -584,25 +586,24 @@ final class AppState: ObservableObject {
 
     Press ⇧⌘T for _Typewriter Scrolling_, which keeps the line you're writing in the middle of the screen.
 
-    ## Library
+    ## Getting Around
 
-    - ⌘N creates a new document, ⇧⌘N a new folder
-    - ⌘O picks a different folder as your library
-    - Drag files and folders in the sidebar to move them
-    - Right-click a file in the sidebar to rename, reveal or trash it
-    - ⌃⌘S shows or hides the library
-
-    Everything saves automatically.
+    - ⇧⌘O jumps to any document or folder as you type part of its name, the ones you opened last first
+    - ⌘[ and ⌘] go back and forward through the documents you've opened
+    - ⌃⌘S shows or hides the library, where you can drag files to move them or right-click one for more
+    - ⌘N creates a new document, and ⌘O picks a different folder as your library
 
     ## Links
 
     Type `[[` to link to another document, picking it from the list that appears. ⌘-click a link to open it; a link to a document you haven't written yet creates it. Renaming or moving a document updates the links to it. ⌥⌘G shows all your documents and the links between them as a graph.
 
-    ## Markdown
+    ## Writing with AI
 
-    - ⌘B for **bold**, ⌘I for _italic_, ⌘K for a [link](https://example.com)
-    - ⇧⌘C for `inline code`, ⇧⌘X for ~~strikethrough~~
-    - ⌘= and ⌘- change the text size
+    Press ⌃` to open a terminal under the page. It starts Claude Code or Codex in the open document's folder and tells it which document you're on, so you can ask it to edit, research or reorganize. Switch it to your whole library at the top of the pane, and right-click a document in the library and choose _Add to Chat_ to bring it into the conversation.
+
+    ## Make It Yours
+
+    Choose Light or Dark appearance and a Sans, Serif or Mono typeface from the View menu. ⌘= and ⌘- change the text size.
 
     > Lists continue when you press Return. Press Return on an empty item to end the list.
 
