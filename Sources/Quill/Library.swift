@@ -5,6 +5,7 @@ import SwiftUI
 final class AppState: ObservableObject {
     static let shared = AppState()
     static let defaultFontSize = Fonts.defaultSize
+    static let defaultTerminalFontSize = 13.0
 
     private let defaults = UserDefaults.standard
 
@@ -43,6 +44,10 @@ final class AppState: ObservableObject {
     /// What a new shell in the terminal starts on its own.
     @Published var terminalAgent: TerminalAgent {
         didSet { defaults.set(terminalAgent.rawValue, forKey: "terminalAgent") }
+    }
+    /// The terminal's text size, apart from the page's.
+    @Published var terminalFontSize: Double {
+        didSet { defaults.set(terminalFontSize, forKey: "terminalFontSize") }
     }
     /// The file or folder the New sheet is naming and placing.
     @Published var newItem: NewItem?
@@ -86,6 +91,8 @@ final class AppState: ObservableObject {
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
         textInput = TextInput.load(defaults)
         terminalAgent = TerminalAgent(rawValue: defaults.string(forKey: "terminalAgent") ?? "") ?? .claude
+        let terminalSize = defaults.double(forKey: "terminalFontSize")
+        terminalFontSize = terminalSize > 0 ? terminalSize : Self.defaultTerminalFontSize
         expanded = Set((defaults.stringArray(forKey: "expanded") ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) })
 
         let root = if let path = defaults.string(forKey: "root"), FileManager.default.fileExists(atPath: path) {

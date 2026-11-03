@@ -1,5 +1,6 @@
 import AppKit
 import Sparkle
+import SwiftTerm
 import SwiftUI
 
 @main
@@ -55,6 +56,17 @@ struct QuillCommands: Commands {
     /// shouldn't land in the note.
     private var editor: FocusTextView? {
         state.textView.flatMap { $0.window?.firstResponder === $0 ? $0 : nil }
+    }
+
+    /// Makes the text you're typing in, the terminal's or the page's, a point bigger or
+    /// smaller; 0 puts it back to its usual size.
+    private func resizeText(_ step: Double) {
+        if NSApp.keyWindow?.firstResponder is TerminalView {
+            state.terminalFontSize = step == 0 ? AppState.defaultTerminalFontSize
+                : min(32, max(9, state.terminalFontSize + step))
+        } else {
+            state.fontSize = step == 0 ? AppState.defaultFontSize : min(32, max(11, state.fontSize + step))
+        }
     }
 
     var body: some Commands {
@@ -126,11 +138,11 @@ struct QuillCommands: Commands {
             Picker("Font", selection: $state.editorFont) {
                 ForEach(EditorFont.allCases) { Text($0.rawValue).tag($0) }
             }
-            Button("Bigger") { state.fontSize = min(32, state.fontSize + 1) }
+            Button("Bigger") { resizeText(1) }
                 .keyboardShortcut("=")
-            Button("Smaller") { state.fontSize = max(11, state.fontSize - 1) }
+            Button("Smaller") { resizeText(-1) }
                 .keyboardShortcut("-")
-            Button("Actual Size") { state.fontSize = AppState.defaultFontSize }
+            Button("Actual Size") { resizeText(0) }
                 .keyboardShortcut("0")
             Divider()
             Picker("Appearance", selection: $state.appearance) {

@@ -37,7 +37,8 @@ struct TerminalPane: View {
             .padding(.horizontal, 14)
             .frame(height: 26)
             TerminalHost(shells: shells, place: place, file: note, root: state.root,
-                         agent: state.terminalAgent, shown: state.terminalShown,
+                         agent: state.terminalAgent, fontSize: state.terminalFontSize,
+                         shown: state.terminalShown,
                          exited: { withAnimation { state.terminalShown = false } },
                          focusEditor: state.focusEditor)
                 .padding(.leading, 14)
@@ -156,6 +157,7 @@ private struct TerminalHost: NSViewRepresentable {
     let root: URL
     /// What a new shell starts.
     let agent: TerminalAgent
+    let fontSize: Double
     let shown: Bool
     /// The shell on show quit, as when you type `exit`.
     let exited: () -> Void
@@ -165,6 +167,7 @@ private struct TerminalHost: NSViewRepresentable {
 
     func updateNSView(_ host: NSView, context: Context) {
         shells.exited = exited
+        shells.fontSize = fontSize
         let wasShown = shells.shown
         shells.shown = shown
         guard shown else {
@@ -199,10 +202,18 @@ private final class Shells: NSObject, ObservableObject, LocalProcessTerminalView
     @Published private(set) var agents: [URL: TerminalAgent] = [:]
     var shown = false
     var exited: () -> Void = {}
+    /// The text size of every shell, as View ▸ Bigger and Smaller set it.
+    var fontSize = AppState.defaultTerminalFontSize {
+        didSet {
+            guard fontSize != oldValue else { return }
+            terminals.values.forEach { $0.font = QuillTerminal.font(size: fontSize) }
+        }
+    }
 
     func terminal(for place: URL, file: URL?, root: URL, agent: TerminalAgent, size: NSRect) -> QuillTerminal {
         if let terminal = terminals[place] { return terminal }
         let terminal = QuillTerminal(frame: size)
+        terminal.font = QuillTerminal.font(size: fontSize)
         terminal.processDelegate = self
         terminal.reported = { [weak self] installed, started in
             self?.installed = installed
@@ -246,8 +257,6 @@ private final class Shells: NSObject, ObservableObject, LocalProcessTerminalView
 private final class QuillTerminal: LocalProcessTerminalView {
     override init(frame: CGRect) {
         super.init(frame: frame)
-        font = NSFont(name: "iAWriterMonoS-Regular", size: 13)
-            ?? .monospacedSystemFont(ofSize: 13, weight: .regular)
         applyColors()
         // "claude,codex;claude": the agents installed, then the one started, if any.
         getTerminal().registerOscHandler(code: ZshIntegration.reportCode) { [weak self] data in
@@ -259,6 +268,10 @@ private final class QuillTerminal: LocalProcessTerminalView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    static func font(size: Double) -> NSFont {
+        NSFont(name: "iAWriterMonoS-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+    }
 
     /// What the shell found as it started: the agents installed, and the one it started.
     var reported: (_ installed: [TerminalAgent], _ started: TerminalAgent?) -> Void = { _, _ in }
