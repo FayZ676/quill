@@ -555,6 +555,8 @@ struct SidebarView: View {
             Button("New Folder") { state.newFolder(in: url) }
             Divider()
         }
+        Button("Add to Chat") { state.addToChat(url) }
+        Divider()
         Button("Rename…") { state.beginRename(url) }
         Button("Reveal in Finder") { state.reveal(url) }
         Divider()

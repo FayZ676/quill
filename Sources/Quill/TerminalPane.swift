@@ -51,6 +51,7 @@ struct TerminalPane: View {
         .frame(height: height)
         .frame(height: state.terminalShown ? height : 0, alignment: .top)
         .clipped()
+        .onAppear { state.mentionInTerminal = { [shells] in shells.mention($0) } }
     }
 
     /// A strip a little taller than the line above the pane; drag it to resize the pane.
@@ -176,6 +177,7 @@ private struct TerminalHost: NSViewRepresentable {
             return
         }
         let terminal = shells.terminal(for: place, file: file, root: root, agent: agent, size: host.bounds)
+        shells.current = terminal
         // Typing carries over to the shell switched to; a note picked in the sidebar
         // doesn't pull the typing down here.
         var focus = !wasShown
@@ -189,6 +191,7 @@ private struct TerminalHost: NSViewRepresentable {
         if focus {
             DispatchQueue.main.async { host.window?.makeFirstResponder(terminal) }
         }
+        shells.sendMentions()
     }
 }
 
@@ -202,6 +205,10 @@ private final class Shells: NSObject, ObservableObject, LocalProcessTerminalView
     @Published private(set) var agents: [URL: TerminalAgent] = [:]
     var shown = false
     var exited: () -> Void = {}
+    /// The shell on show, or last shown.
+    weak var current: QuillTerminal?
+    /// Paths from Add to Chat waiting for the pane to open.
+    private var mentions: [URL] = []
     /// The text size of every shell, as View ▸ Bigger and Smaller set it.
     var fontSize = AppState.defaultTerminalFontSize {
         didSet {
@@ -222,6 +229,19 @@ private final class Shells: NSObject, ObservableObject, LocalProcessTerminalView
         terminal.start(in: file?.deletingLastPathComponent() ?? root, file: file, root: root, agent: agent)
         terminals[place] = terminal
         return terminal
+    }
+
+    /// Types the path at the prompt of the shell on show, or of the one shown once the pane opens.
+    func mention(_ url: URL) {
+        mentions.append(url)
+        if shown { sendMentions() }
+    }
+
+    func sendMentions() {
+        guard shown, let current, !mentions.isEmpty else { return }
+        current.mention(mentions)
+        mentions = []
+        current.window?.makeFirstResponder(current)
     }
 
     /// Ends the place's shell and whatever's running in it, as closing a Terminal window does.
@@ -280,6 +300,7 @@ private final class QuillTerminal: LocalProcessTerminalView {
     /// the session's basics rather than all of Quill's environment, which can carry
     /// whatever launched Quill (another terminal, say) into the shell.
     func start(in dir: URL, file: URL?, root: URL, agent: TerminalAgent) {
+        self.dir = dir
         let inherited = ProcessInfo.processInfo.environment
         let shell = inherited["SHELL"] ?? "/bin/zsh"
         var env = inherited.filter { key, _ in
@@ -302,6 +323,24 @@ private final class QuillTerminal: LocalProcessTerminalView {
         }
         startProcess(executable: shell, environment: env.map { "\($0.key)=\($0.value)" },
                      execName: "-" + (shell as NSString).lastPathComponent, currentDirectory: dir.path)
+    }
+
+    /// Where the shell started, which paths typed into it are relative to.
+    private var dir: URL?
+
+    /// Types `@path` for each, as Claude Code takes a file or folder to look at: relative to
+    /// where the shell started when inside it, with spaces escaped. Pasted rather than typed,
+    /// so the agent's `@` completion doesn't open over each one.
+    func mention(_ urls: [URL]) {
+        let base = (dir?.standardizedFileURL.path ?? "") + "/"
+        let words = urls.map { url in
+            var path = url.standardizedFileURL.path
+            if path.hasPrefix(base) { path.removeFirst(base.count) }
+            if url.hasDirectoryPath { path += "/" }
+            return "@" + path.replacingOccurrences(of: " ", with: "\\ ")
+        }
+        let text = " " + words.joined(separator: " ") + " "
+        send(txt: terminal.bracketedPasteMode ? "\u{1b}[200~" + text + "\u{1b}[201~" : text)
     }
 
     /// The program's output, less the queries SwiftTerm misreads (see `QuerySifter`).

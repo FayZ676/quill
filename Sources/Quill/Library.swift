@@ -47,6 +47,8 @@ final class AppState: ObservableObject {
     @Published var terminalShown = false
     /// The terminal shows the library's shell, rather than the open note's.
     @Published var terminalOnLibrary = false
+    /// Types a file or folder's path at the prompt of the shell on show; set by the terminal.
+    var mentionInTerminal: (URL) -> Void = { _ in }
     /// What a new shell in the terminal starts on its own.
     @Published var terminalAgent: TerminalAgent {
         didSet { defaults.set(terminalAgent.rawValue, forKey: "terminalAgent") }
@@ -465,6 +467,13 @@ final class AppState: ObservableObject {
 
     func reveal(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    /// Points the agent in the terminal at a note or folder, as `@path` at its prompt, for
+    /// you to finish the question. Opens the terminal if it's hidden.
+    func addToChat(_ url: URL) {
+        withAnimation { terminalShown = true }
+        mentionInTerminal(url)
     }
 
     func focusEditor() {
