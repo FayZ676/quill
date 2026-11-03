@@ -184,29 +184,40 @@ private struct FadesWithChrome: ViewModifier {
     }
 }
 
-/// Row icons in the accent color, as a split view's sidebar draws them, and white on the
-/// selected row.
+/// Row icons in the accent color, as a split view's sidebar draws them, and white on a row
+/// lit in the accent.
 private struct AccentIcon: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         Label {
             configuration.title
         } icon: {
-            if #available(macOS 14.0, *) {
-                Icon(icon: configuration.icon)
-            } else {
-                configuration.icon.foregroundStyle(.tint)
-            }
+            Icon(icon: configuration.icon)
         }
     }
 
-    @available(macOS 14.0, *)
     private struct Icon: View {
         let icon: LabelStyleConfiguration.Icon
-        @Environment(\.backgroundProminence) private var prominence
+        @Environment(\.sidebarRowLit) private var lit
 
         var body: some View {
-            icon.foregroundStyle(prominence == .increased ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
+            icon.foregroundStyle(lit ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
         }
+    }
+}
+
+private struct SidebarFocusedKey: EnvironmentKey { static let defaultValue = false }
+private struct SidebarRowLitKey: EnvironmentKey { static let defaultValue = false }
+
+private extension EnvironmentValues {
+    /// You're typing in the sidebar, rather than the page or the terminal.
+    var sidebarFocused: Bool {
+        get { self[SidebarFocusedKey.self] }
+        set { self[SidebarFocusedKey.self] = newValue }
+    }
+    /// The row is the selected one, lit in the accent while you're in the sidebar.
+    var sidebarRowLit: Bool {
+        get { self[SidebarRowLitKey.self] }
+        set { self[SidebarRowLitKey.self] = newValue }
     }
 }
 
@@ -463,6 +474,7 @@ private struct MoreButton: View {
 
 struct SidebarView: View {
     @EnvironmentObject var state: AppState
+    @State private var focused = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -474,6 +486,8 @@ struct SidebarView: View {
             .scrollContentBackground(.hidden)
             // Roomy rows, like Finder's large sidebar setting, so files are easy to hit.
             .environment(\.sidebarRowSize, .large)
+            .background(SidebarFocus(focused: $focused))
+            .environment(\.sidebarFocused, focused)
             // One menu for rows and the empty space around them, which gets library-wide actions.
             .contextMenu(forSelectionType: URL.self) { items in
                 if let url = items.first {
@@ -551,11 +565,16 @@ private struct TreeRows: View {
 
 private struct NodeRow: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.sidebarFocused) private var sidebarFocused
     let node: FileNode
     @FocusState private var editing: Bool
     @State private var dropTargeted = false
 
     private var symbol: String { node.isDirectory ? "folder" : "doc.text" }
+    private var selected: Bool { state.selection == node.url }
+    /// Full accent while you're in the sidebar; the page's softer selection color while you're
+    /// elsewhere, so the open file still stands out.
+    private var lit: Bool { selected && sidebarFocused }
 
     var body: some View {
         Group {
@@ -612,6 +631,71 @@ private struct NodeRow: View {
             if dropTargeted && node.isDirectory {
                 RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.2)).padding(-4)
             }
+        }
+        .foregroundStyle(lit ? Color.white : Color.primary)
+        .environment(\.sidebarRowLit, lit)
+        .listRowBackground(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(lit ? Color.accentColor : Color(nsColor: Theme.selection))
+                .opacity(selected ? 1 : 0)
+                .padding(.horizontal, 10))
+    }
+}
+
+/// Turns off AppKit's highlight of the sidebar's selected row, which `NodeRow` draws in its
+/// place, and says whether you're typing in the sidebar. AppKit's own highlight goes a
+/// wallpaper-tinted gray once you're typing elsewhere, which hides the open file.
+private struct SidebarFocus: NSViewRepresentable {
+    @Binding var focused: Bool
+
+    func makeNSView(context: Context) -> Watcher { Watcher() }
+
+    func updateNSView(_ watcher: Watcher, context: Context) {
+        watcher.changed = { focused = $0 }
+        watcher.update()
+    }
+
+    final class Watcher: NSView {
+        var changed: (Bool) -> Void = { _ in }
+        private weak var list: NSOutlineView?
+        private var focused: Bool?
+        private var observation: NSKeyValueObservation?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observation = window?.observe(\.firstResponder) { [weak self] _, _ in
+                DispatchQueue.main.async { self?.update() }
+            }
+            DispatchQueue.main.async { [weak self] in self?.update() }
+        }
+
+        func update() {
+            if list == nil { list = findList() }
+            guard let list else { return }
+            if list.selectionHighlightStyle != .none { list.selectionHighlightStyle = .none }
+            let now = window?.firstResponder === list
+            guard now != focused else { return }
+            focused = now
+            // Not while SwiftUI is updating the view.
+            DispatchQueue.main.async { [self] in changed(now) }
+        }
+
+        /// The List's outline view: beside this view, under the nearest view above that holds one.
+        private func findList() -> NSOutlineView? {
+            var ancestor = superview
+            while let view = ancestor {
+                if let list = Self.outline(in: view) { return list }
+                ancestor = view.superview
+            }
+            return nil
+        }
+
+        private static func outline(in view: NSView) -> NSOutlineView? {
+            if let list = view as? NSOutlineView { return list }
+            for child in view.subviews {
+                if let list = outline(in: child) { return list }
+            }
+            return nil
         }
     }
 }
