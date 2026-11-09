@@ -29,10 +29,12 @@ struct ContentView: View {
                 .strokeBorder(Color(nsColor: .separatorColor))
                 .frame(width: ActivityStrip.width + (state.sidebarShown ? sidebarWidth : 0))
                 .frame(maxHeight: .infinity)
-                .padding(4)
+                .padding(Boxed.inset)
                 .allowsHitTesting(false)
                 .modifier(FadesWithChrome(chrome: state.chrome))
         }
+        // With each box's own, as far from the window's edges as the boxes are from each other.
+        .padding(Boxed.inset)
         // The window buttons' strip: a shade darker than the page, with a line under it like
         // the one under Quill's bar. Over the content, as the editor reaches up under it; it
         // takes no clicks, so the strip still moves the window. Gives way to the page while
@@ -167,7 +169,7 @@ struct ContentView: View {
         // Inside the strip's box, whose border is drawn over the two of them.
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
-        .padding([.vertical, .trailing], 4)
+        .padding([.vertical, .trailing], Boxed.inset)
         .background(Color(nsColor: Theme.background))
         // Laid out at its full width and uncovered as it slides, so the list isn't laid
         // out again on every frame of the slide.
@@ -345,6 +347,8 @@ private struct TitleBar: ViewModifier {
 /// the way round, set in from the parts beside it so no two touch.
 struct Boxed: ViewModifier {
     var on = true
+    /// Half the room between two boxes, which each take this much round them.
+    static let inset: CGFloat = 2
 
     @ViewBuilder func body(content: Content) -> some View {
         if on {
@@ -353,7 +357,7 @@ struct Boxed: ViewModifier {
                 .background(Color(nsColor: Theme.background))
                 .clipShape(shape)
                 .overlay(shape.strokeBorder(Color(nsColor: .separatorColor)))
-                .padding(4)
+                .padding(Self.inset)
         } else {
             content
         }
@@ -459,7 +463,7 @@ private struct ActivityStrip: View {
         .frame(width: Self.width)
         .frame(maxHeight: .infinity)
         // Its box is drawn over it and the sidebar both, so it can take the sidebar in.
-        .padding(4)
+        .padding(Boxed.inset)
         .modifier(FadesWithChrome(chrome: chrome))
     }
 
