@@ -91,6 +91,9 @@ struct QuillCommands: Commands {
                 .keyboardShortcut(Shortcuts.openFolder)
         }
 
+        // Notes aren't printed, and ⌘P is Go To, as in VS Code.
+        CommandGroup(replacing: .printItem) {}
+
         CommandGroup(replacing: .saveItem) {
             Button("Save") { state.flushSave() }
                 .keyboardShortcut(Shortcuts.save)
@@ -143,10 +146,10 @@ struct QuillCommands: Commands {
                 .keyboardShortcut(Shortcuts.forward)
                 .disabled(state.forwardStack.isEmpty)
             Divider()
-            Button(state.sidebarShown ? "Hide Sidebar" : "Show Sidebar") {
-                withAnimation { state.sidebarShown.toggle() }
-            }
-            .keyboardShortcut(Shortcuts.sidebar)
+            Button("Explorer") { state.togglePanel(.explorer) }
+                .keyboardShortcut(Shortcuts.explorer)
+            Button("Search") { state.togglePanel(.search) }
+                .keyboardShortcut(Shortcuts.search)
             Button(state.showingGraph ? "Hide Graph" : "Show Graph") { state.toggleGraph() }
                 .keyboardShortcut(Shortcuts.graph)
             Button(state.terminalShown ? "Hide Terminal" : "Show Terminal") {

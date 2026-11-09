@@ -66,7 +66,8 @@ private let sections = [
         Entry(title: "Forward", shortcut: Shortcuts.forward.label, also: "navigation next history mouse"),
     ]),
     EntrySection(title: "View", entries: [
-        Entry(title: "Sidebar", shortcut: Shortcuts.sidebar.label, also: "show hide library files"),
+        Entry(title: "Explorer", shortcut: Shortcuts.explorer.label, also: "sidebar show hide library files folders tree"),
+        Entry(title: "Search All Notes", shortcut: Shortcuts.search.label, also: "sidebar find text every documents library"),
         Entry(title: "Graph", shortcut: Shortcuts.graph.label, also: "show hide links map"),
         Entry(title: "Terminal", shortcut: Shortcuts.terminal.label, also: "show hide agent chat ai claude"),
         Entry(title: "Focus Mode", shortcut: Shortcuts.focus.label, also: "sentence paragraph dim"),

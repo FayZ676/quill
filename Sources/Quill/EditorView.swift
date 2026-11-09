@@ -154,6 +154,16 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         if hadDocument && text == tv.string { return }
         load(text)
         showPendingHeading()
+        showPendingRange()
+    }
+
+    /// Selects the match a note was opened from search on.
+    private func showPendingRange() {
+        guard let range = state.pendingRange, let tv = textView else { return }
+        state.pendingRange = nil
+        guard NSMaxRange(range) <= (tv.string as NSString).length else { return }
+        tv.setSelectedRange(range)
+        tv.scrollRangeToVisible(range)
     }
 
     /// Puts the caret on the heading a `[[Note#Heading]]` link pointed into.

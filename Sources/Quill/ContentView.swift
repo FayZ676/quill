@@ -12,66 +12,15 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Stacked rather than inset: the list scrolls under an inset and its top rows
-            // would be stuck there.
-            VStack(spacing: 0) {
-                // In the sidebar, so they come and go with it. In the iPhone library's order.
-                HStack(spacing: 6) {
-                    GraphToggle()
-                    Spacer()
-                    GoToButton()
-                    NewButton()
-                }
-                .modifier(TitleBar(chrome: state.chrome))
-                BarDivider(chrome: state.chrome)
-                SidebarView()
+            ActivityStrip(chrome: state.chrome)
+            ZStack(alignment: .leading) {
+                pageColumn
+                    // Out, the sidebar takes its room from the page; shown over the page
+                    // from the strip, it covers it.
+                    .padding(.leading, state.sidebarShown ? sidebarWidth : 0)
+                sidebar
             }
-            // Laid out at its full width and uncovered as it slides, so the list isn't laid
-            // out again on every frame of the slide.
-            .frame(width: sidebarWidth)
-            .frame(width: state.sidebarShown ? sidebarWidth : 0, alignment: .trailing)
             .clipped()
-            .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
-
-            VStack(spacing: 0) {
-                ZStack(alignment: .bottom) {
-                    EditorView(state: state)
-                    // Over the editor rather than in its place, so the open document keeps its
-                    // caret and undo history for when you come back.
-                    if state.showingGraph {
-                        GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
-                    } else {
-                        if state.openFile == nil {
-                            EmptyEditor()
-                        }
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if !state.showingGraph {
-                        FindBar(finder: state.finder).padding(12)
-                    }
-                }
-                .background(GeometryReader { geometry in
-                    Color.clear
-                        .onAppear { page = geometry.frame(in: .global) }
-                        .onChange(of: geometry.frame(in: .global)) { page = $0 }
-                })
-                // Always there, if folded away, so its shells keep running while it's closed.
-                TerminalPane()
-                // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
-                // runs the full width only when the sidebar is away.
-                BarDivider(chrome: state.chrome)
-                StatusBar(stats: state.stats, chrome: state.chrome)
-            }
-            // Gives way to the sidebar rather than pushing it off the window.
-            .frame(minWidth: 0, maxWidth: .infinity)
-            .ignoresSafeArea(.container, edges: .bottom)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 0) {
-                    DetailBar().modifier(TitleBar(chrome: state.chrome))
-                    BarDivider(chrome: state.chrome)
-                }
-            }
         }
         // The window buttons' strip: a shade darker than the page, with a line under it like
         // the one under Quill's bar. Over the content, as the editor reaches up under it; it
@@ -108,6 +57,7 @@ struct ContentView: View {
         // while they still read as shown, and they'd stay that way.
         .onReceive(state.chrome.$hidden) { hidden in
             guard hidden else { return }
+            state.endPeek()
             DispatchQueue.main.async {
                 guard state.chrome.hidden else { return }
                 if state.sidebarShown {
@@ -129,6 +79,7 @@ struct ContentView: View {
         // Renaming happens in the sidebar, so bring it out for the occasion and put it
         // back afterwards.
         .onChange(of: state.renameTarget) { target in
+            if target != nil { state.panel = .explorer }
             if target != nil, !state.sidebarShown {
                 sidebarShownForRename = true
                 withAnimation { state.sidebarShown = true }
@@ -138,16 +89,85 @@ struct ContentView: View {
             }
         }
     }
+
+    /// The page, with its bar above and the terminal and status bar below.
+    private var pageColumn: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                EditorView(state: state)
+                // Over the editor rather than in its place, so the open document keeps its
+                // caret and undo history for when you come back.
+                if state.showingGraph {
+                    GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
+                } else {
+                    if state.openFile == nil {
+                        EmptyEditor()
+                    }
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if !state.showingGraph {
+                    FindBar(finder: state.finder).padding(12)
+                }
+            }
+            .background(GeometryReader { geometry in
+                Color.clear
+                    .onAppear { page = geometry.frame(in: .global) }
+                    .onChange(of: geometry.frame(in: .global)) { page = $0 }
+            })
+            // Always there, if folded away, so its shells keep running while it's closed.
+            TerminalPane()
+            // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
+            // runs the full width only when the sidebar is away.
+            BarDivider(chrome: state.chrome)
+            StatusBar(stats: state.stats, chrome: state.chrome)
+        }
+        // Gives way to the sidebar rather than pushing it off the window.
+        .frame(minWidth: 0, maxWidth: .infinity)
+        .ignoresSafeArea(.container, edges: .bottom)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                DetailBar().modifier(TitleBar(chrome: state.chrome))
+                BarDivider(chrome: state.chrome)
+            }
+        }
+    }
+
+    /// The sidebar: out beside the page, shown over it while the mouse rests on the strip, or
+    /// away behind the strip.
+    private var sidebar: some View {
+        let shown = state.sidebarShown || state.peeking
+        // Stacked rather than inset: the list scrolls under an inset and its top rows
+        // would be stuck there.
+        return VStack(spacing: 0) {
+            PanelHeader().modifier(TitleBar(chrome: state.chrome))
+            BarDivider(chrome: state.chrome)
+            switch state.panel {
+            case .explorer: SidebarView()
+            case .search: NoteSearchView(search: state.noteSearch)
+            }
+        }
+        .background(Color(nsColor: Theme.background))
+        .background(SidebarAnchor())
+        .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
+        // Laid out at its full width and uncovered as it slides, so the list isn't laid
+        // out again on every frame of the slide.
+        .frame(width: sidebarWidth)
+        .shadow(color: .black.opacity(state.peeking ? 0.25 : 0), radius: 16, x: 4)
+        .offset(x: shown ? 0 : -sidebarWidth - 20)
+        .allowsHitTesting(shown)
+        .onHover { state.hover(.sidebar, $0) }
+        .onExitCommand { state.closeSidebar() }
+    }
 }
 
 /// The writing column's half of Quill's bar. The title centers over the text, like the word
-/// count below it; the sidebar toggle sits at its leading edge.
+/// count below it; Back and Forward sit at its leading edge.
 private struct DetailBar: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
         HStack(spacing: 6) {
-            SidebarToggle()
             HistoryButtons()
             Spacer()
             if !state.showingGraph {
@@ -269,22 +289,91 @@ private struct BarDivider: View {
     }
 }
 
-private struct SidebarToggle: View {
+/// A strip of icons down the window's left edge, as VS Code's activity bar is: Explorer and
+/// Search bring out their panel in the sidebar, and Graph shows the graph where the page goes.
+/// Each is lit while it's showing. Resting the mouse on a panel's icon shows the panel over
+/// the page, to pick a note from; a click brings it out beside the page.
+private struct ActivityStrip: View {
+    @EnvironmentObject var state: AppState
+    @ObservedObject var chrome: ChromeFader
+
+    var body: some View {
+        VStack(spacing: 6) {
+            panel(.explorer, symbol: "doc.on.doc", help: "Explorer (\(Shortcuts.explorer.label))")
+            panel(.search, symbol: "magnifyingglass", help: "Search (\(Shortcuts.search.label))")
+            icon("point.3.connected.trianglepath.dotted", lit: state.showingGraph,
+                 help: "\(state.showingGraph ? "Hide" : "Show") Graph (\(Shortcuts.graph.label))",
+                 action: state.toggleGraph)
+            Spacer()
+        }
+        // The first icon level with the buttons in Quill's bar.
+        .padding(.top, 6)
+        .frame(width: 48)
+        .frame(maxHeight: .infinity)
+        .background(Color(nsColor: Theme.background))
+        .overlay(alignment: .trailing) { Divider() }
+        .contentShape(Rectangle())
+        .onHover { state.hover(.strip, $0) }
+        .modifier(FadesWithChrome(chrome: chrome))
+    }
+
+    private func panel(_ panel: SidebarPanel, symbol: String, help: String) -> some View {
+        icon(symbol, lit: state.sidebarShown && state.panel == panel, help: help) { state.clickPanel(panel) }
+            .onHover { state.hover(.icon(panel), $0) }
+    }
+
+    private func icon(_ symbol: String, lit: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .toolbarIcon(width: 40)
+                .frame(height: 36)
+                .foregroundStyle(lit ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.bare)
+        .help(help)
+    }
+}
+
+/// The sidebar's half of Quill's bar: what the panel is, and its buttons.
+private struct PanelHeader: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        Button {
-            withAnimation { state.sidebarShown.toggle() }
-        } label: {
-            Image(systemName: "sidebar.left").toolbarIcon()
+        HStack(spacing: 6) {
+            switch state.panel {
+            case .explorer:
+                Text(state.root.lastPathComponent)
+                    .appFont(13, bold: true)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                // In the iPhone library's order.
+                GoToButton()
+                NewButton()
+            case .search:
+                Text("Search")
+                    .appFont(13, bold: true)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
         }
-        .buttonStyle(.bare)
-        .help("Show or Hide Sidebar (\(Shortcuts.sidebar.label))")
+        .frame(minHeight: 30)
+    }
+}
+
+/// Tells AppState where the sidebar is in the window, to tell whether you're typing there.
+private struct SidebarAnchor: NSViewRepresentable {
+    @EnvironmentObject var state: AppState
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        state.sidebarView = view
     }
 }
 
 /// Back and Forward through the notes opened, as in a browser; faded when there's nowhere to go.
-/// Close together and set apart from the sidebar toggle, so they read as a pair.
+/// Close together, so they read as a pair.
 private struct HistoryButtons: View {
     @EnvironmentObject var state: AppState
 
@@ -293,7 +382,6 @@ private struct HistoryButtons: View {
             step("chevron.left", help: "Back (\(Shortcuts.back.label))", enabled: !state.backStack.isEmpty, state.goBack)
             step("chevron.right", help: "Forward (\(Shortcuts.forward.label))", enabled: !state.forwardStack.isEmpty, state.goForward)
         }
-        .padding(.leading, 8)
     }
 
     private func step(_ symbol: String, help: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
@@ -458,21 +546,6 @@ private struct PathPanel: View {
     }
 }
 
-/// Shows the graph of notes where the editor goes; lit while it's there, like the focus eye.
-private struct GraphToggle: View {
-    @EnvironmentObject var state: AppState
-
-    var body: some View {
-        Button { state.toggleGraph() } label: {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .toolbarIcon()
-                .foregroundStyle(state.showingGraph ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(.bare)
-        .help(state.showingGraph ? "Hide Graph (⌥⌘G)" : "Show Graph (⌥⌘G)")
-    }
-}
-
 private struct FocusToggle: View {
     @EnvironmentObject var state: AppState
 
@@ -543,6 +616,10 @@ struct SidebarView: View {
             .onChange(of: state.selection) { selection in
                 guard let selection else { return }
                 DispatchQueue.main.async { withAnimation { proxy.scrollTo(selection) } }
+            }
+            // Back from search, at the open note.
+            .onAppear {
+                if let selection = state.selection { DispatchQueue.main.async { proxy.scrollTo(selection) } }
             }
             // A new file or folder gets its row once the library's rescan lands.
             .onChange(of: state.tree) { _ in
@@ -705,7 +782,11 @@ private struct SidebarFocus: NSViewRepresentable {
         }
 
         func update() {
-            if list == nil { list = findList() }
+            if list == nil {
+                list = findList()
+                // For ⇧⌘E to put you in it.
+                if let list { DispatchQueue.main.async { AppState.shared.sidebarList = list } }
+            }
             guard let list else { return }
             if list.selectionHighlightStyle != .none { list.selectionHighlightStyle = .none }
             let now = window?.firstResponder === list
