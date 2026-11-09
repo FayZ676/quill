@@ -564,8 +564,10 @@ final class AppState: ObservableObject {
     /// Opens a document, or picks out a folder in the sidebar with the folders above it open.
     func goTo(_ url: URL) {
         guard url.hasDirectoryPath else { return openNote(url) }
-        panel = .explorer
-        withAnimation { sidebarShown = true }
+        withAnimation {
+            panel = .explorer
+            sidebarShown = true
+        }
         guard url != root else { return }
         expandAncestors(of: url)
         selection = url
@@ -670,8 +672,12 @@ final class AppState: ObservableObject {
     }
 
     private func showPanel(_ panel: SidebarPanel) {
-        self.panel = panel
-        withAnimation { sidebarShown = true }
+        // Both in the animation: a change to the state made outside it, even to the panel
+        // already on show, takes the animation away from the slide too.
+        withAnimation {
+            self.panel = panel
+            sidebarShown = true
+        }
         // Once a panel just switched to is in the window.
         DispatchQueue.main.async { [weak self] in self?.enterPanel() }
     }
