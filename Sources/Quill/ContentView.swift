@@ -177,7 +177,7 @@ private struct DetailBar: View {
 }
 
 /// The tabs open, from the leading edge, sharing the room between them once they fill it,
-/// and a button for another. Drag a tab along to move it: it follows the pointer, and the
+/// and a button for another at the trailing edge, across from Back and Forward. Drag a tab along to move it: it follows the pointer, and the
 /// others slide out of its way.
 private struct TabStrip: View {
     @EnvironmentObject var state: AppState
@@ -205,6 +205,7 @@ private struct TabStrip: View {
                         .onChanged { moved(tab.id, $0) }
                         .onEnded { _ in withAnimation(.easeOut(duration: 0.15)) { drag = nil } })
             }
+            Spacer(minLength: 0)
             Button(action: state.newTab) {
                 Image(systemName: "plus")
                     .font(.system(size: 13, weight: .medium))
@@ -212,7 +213,6 @@ private struct TabStrip: View {
             }
             .buttonStyle(.bare)
             .help("New Tab (\(Shortcuts.newTab.label))")
-            Spacer(minLength: 0)
         }
         .coordinateSpace(name: "tabs")
         .onPreferenceChange(TabFrames.self) { frames = $0 }
@@ -278,7 +278,8 @@ private struct TabItem: View {
         // Solid under the tint, the bar's own color, so a tab dragged over another hides it.
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: Theme.background)))
         .overlay(alignment: .trailing) {
-            if hovering && !dragging {
+            // Nothing to close on the one tab left with no note in it.
+            if hovering && !dragging && (state.tabs.count > 1 || tab.note != nil) {
                 Button { state.closeTab(tab.id) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
