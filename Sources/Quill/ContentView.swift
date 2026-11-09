@@ -305,10 +305,14 @@ private struct TabItem: View {
                     .onTapGesture { state.showTab(tab.id) }
             }
         }
-        // Room for the close button either side, so the name stays centered.
-        .padding(.horizontal, 24)
-        // The bar's height, less as much above and below as there is between two tabs.
-        .frame(minWidth: 0, maxWidth: 180, minHeight: 40)
+        // Room at the end for the close button, kept while it's away so the tab doesn't
+        // change width under the pointer.
+        .padding(.leading, 12)
+        .padding(.trailing, 28)
+        // As wide as its name, up to a cap past which the name is cut short; the bar's
+        // height, less as much above and below as there is between two tabs.
+        .frame(maxWidth: 180, minHeight: 40)
+        .fixedSize(horizontal: true, vertical: false)
         // No plate to say which tab is on show, its bold name says so. A faint one under the
         // pointer shows how far the tab reaches, for its close button and for dragging it.
         .background(RoundedRectangle(cornerRadius: 6)
