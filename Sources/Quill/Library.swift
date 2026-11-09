@@ -41,12 +41,6 @@ final class AppState: ObservableObject {
     @Published var sidebarShown = true
     /// What the sidebar shows.
     @Published var panel = SidebarPanel.explorer
-    /// The sidebar shows over the page while the mouse rests on the strip, without being out.
-    @Published private(set) var peeking = false
-    private var peekStart: DispatchWorkItem?
-    private var peekEnd: DispatchWorkItem?
-    /// The parts of the strip and sidebar the mouse is over.
-    private var hovered: Set<HoverArea> = []
     /// Installed by the sidebar: the view it's drawn in, to tell whether you're typing there.
     weak var sidebarView: NSView?
     /// Installed by the explorer: its list, for ⇧⌘E to put you in.
@@ -514,7 +508,6 @@ final class AppState: ObservableObject {
         } else {
             pendingRange = range
         }
-        endPeek()
         openNote(url)
     }
 
@@ -535,23 +528,12 @@ final class AppState: ObservableObject {
 
     /// Puts the sidebar away and you back on the page, as Escape in it does.
     func closeSidebar() {
-        endPeek()
         withAnimation { sidebarShown = false }
         focusEditor()
     }
 
-    /// Keeps the sidebar shown over the page out beside it, as when you start typing in it.
-    func keepPeek() {
-        guard peeking else { return }
-        peekStart?.cancel()
-        peekEnd?.cancel()
-        peeking = false
-        withAnimation { sidebarShown = true }
-    }
-
     private func showPanel(_ panel: SidebarPanel) {
         self.panel = panel
-        peeking = false
         withAnimation { sidebarShown = true }
         // Once a panel just switched to is in the window.
         DispatchQueue.main.async { [weak self] in self?.enterPanel() }
@@ -576,43 +558,6 @@ final class AppState: ObservableObject {
         // What shows of it: a long list runs far past the sidebar.
         let at = responder.convert(responder.visibleRect, to: nil)
         return sidebar.convert(sidebar.bounds, to: nil).contains(CGPoint(x: at.midX, y: at.midY))
-    }
-
-    /// The mouse came onto or left part of the strip or the sidebar over the page. Resting
-    /// on a panel's icon a moment shows that panel over the page, and moving to another
-    /// icon switches to it; leaving both puts it away, after a moment's grace so a mouse
-    /// that strays off the edge doesn't lose it.
-    func hover(_ area: HoverArea, _ inside: Bool) {
-        if inside { hovered.insert(area) } else { hovered.remove(area) }
-        guard !sidebarShown else { return }
-        peekEnd?.cancel()
-        if case .icon(let panel) = area {
-            peekStart?.cancel()
-            if inside, peeking { self.panel = panel }
-            if inside, !peeking {
-                let start = DispatchWorkItem { [weak self] in
-                    self?.panel = panel
-                    withAnimation(.easeOut(duration: 0.15)) { self?.peeking = true }
-                }
-                peekStart = start
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: start)
-            }
-        }
-        if hovered.isEmpty, peeking {
-            let end = DispatchWorkItem { [weak self] in self?.endPeek() }
-            peekEnd = end
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: end)
-        }
-    }
-
-    /// Puts away the sidebar shown over the page, as when a note is picked from it.
-    func endPeek() {
-        peekStart?.cancel()
-        peekEnd?.cancel()
-        guard peeking else { return }
-        // Not left typing in a sidebar that's gone, as after a click on a folder in it.
-        if typingInSidebar { focusEditor() }
-        withAnimation(.easeOut(duration: 0.15)) { peeking = false }
     }
 
     // MARK: Private
@@ -642,10 +587,8 @@ final class AppState: ObservableObject {
 
     private func selectionChanged() {
         guard let url = selection, !url.hasDirectoryPath else { return }
-        // Picking a note, even the one that was open, leaves the graph for the editor, and
-        // the sidebar shown over the page for the note.
+        // Picking a note, even the one that was open, leaves the graph for the editor.
         showingGraph = false
-        endPeek()
         recents.viewed(url)
         guard url != openFile else { return }
         flushSave()

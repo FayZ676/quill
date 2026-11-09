@@ -15,8 +15,7 @@ struct ContentView: View {
             ActivityStrip(chrome: state.chrome)
             ZStack(alignment: .leading) {
                 pageColumn
-                    // Out, the sidebar takes its room from the page; shown over the page
-                    // from the strip, it covers it.
+                    // The sidebar takes its room from the page.
                     .padding(.leading, state.sidebarShown ? sidebarWidth : 0)
                 sidebar
             }
@@ -57,7 +56,6 @@ struct ContentView: View {
         // while they still read as shown, and they'd stay that way.
         .onReceive(state.chrome.$hidden) { hidden in
             guard hidden else { return }
-            state.endPeek()
             DispatchQueue.main.async {
                 guard state.chrome.hidden else { return }
                 if state.sidebarShown {
@@ -133,10 +131,9 @@ struct ContentView: View {
         }
     }
 
-    /// The sidebar: out beside the page, shown over it while the mouse rests on the strip, or
-    /// away behind the strip.
+    /// The sidebar: out beside the page, or away behind the strip.
     private var sidebar: some View {
-        let shown = state.sidebarShown || state.peeking
+        let shown = state.sidebarShown
         // Stacked rather than inset: the list scrolls under an inset and its top rows
         // would be stuck there.
         return VStack(spacing: 0) {
@@ -153,10 +150,8 @@ struct ContentView: View {
         // Laid out at its full width and uncovered as it slides, so the list isn't laid
         // out again on every frame of the slide.
         .frame(width: sidebarWidth)
-        .shadow(color: .black.opacity(state.peeking ? 0.25 : 0), radius: 16, x: 4)
         .offset(x: shown ? 0 : -sidebarWidth - 20)
         .allowsHitTesting(shown)
-        .onHover { state.hover(.sidebar, $0) }
         .onExitCommand { state.closeSidebar() }
     }
 }
@@ -293,8 +288,7 @@ private struct BarDivider: View {
 
 /// A strip of icons down the window's left edge, as VS Code's activity bar is: Explorer and
 /// Search bring out their panel in the sidebar, and Graph shows the graph where the page goes.
-/// Each is lit while it's showing. Resting the mouse on a panel's icon shows the panel over
-/// the page, to pick a note from; a click brings it out beside the page.
+/// Each is lit while it's showing, and a click on it again puts it away.
 private struct ActivityStrip: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var chrome: ChromeFader
@@ -314,14 +308,11 @@ private struct ActivityStrip: View {
         .frame(maxHeight: .infinity)
         .background(Color(nsColor: Theme.background))
         .overlay(alignment: .trailing) { HStack(spacing: 0) { Divider() } }
-        .contentShape(Rectangle())
-        .onHover { state.hover(.strip, $0) }
         .modifier(FadesWithChrome(chrome: chrome))
     }
 
     private func panel(_ panel: SidebarPanel, symbol: String, help: String) -> some View {
         icon(symbol, lit: state.sidebarShown && state.panel == panel, help: help) { state.clickPanel(panel) }
-            .onHover { state.hover(.icon(panel), $0) }
     }
 
     private func icon(_ symbol: String, lit: Bool, help: String, action: @escaping () -> Void) -> some View {

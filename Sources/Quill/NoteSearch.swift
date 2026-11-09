@@ -4,13 +4,6 @@ import SwiftUI
 /// What the sidebar beside the strip shows, as VS Code's activity bar switches its side bar.
 enum SidebarPanel { case explorer, search }
 
-/// The parts of the strip and sidebar the mouse can rest on, for the sidebar to show over the
-/// page while it's there.
-enum HoverArea: Hashable {
-    case strip, sidebar
-    case icon(SidebarPanel)
-}
-
 /// A line of a note holding what was searched for.
 struct NoteMatch: Identifiable {
     let id: Int
@@ -165,8 +158,6 @@ struct NoteSearchView: View {
         // The library changed: what it holds may have too.
         .onChange(of: state.tree) { _ in run() }
         .onChange(of: state.searchFocus) { _ in typing = true }
-        // A search typed over the page stays out to work through.
-        .onChange(of: typing) { if $0 { state.keepPeek() } }
         .onAppear {
             run()
             if state.sidebarShown { typing = true }
