@@ -15,8 +15,6 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
     let section: (Item) -> String?
     /// What Return or a click does with an item; nothing, for a list only to read.
     let pick: ((Item) -> Void)?
-    /// What ⌘Return or a ⌘-click does instead, if anything: Go To opens a note in a new tab.
-    let pickAlternate: ((Item) -> Void)?
     let row: (Item) -> Row
     @State private var query = ""
     @State private var picked = 0
@@ -25,14 +23,12 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
 
     init(prompt: String, empty: String = "Nothing Matches",
          matches: @escaping (String) -> [Item], section: @escaping (Item) -> String? = { _ in nil },
-         pick: ((Item) -> Void)? = nil, pickAlternate: ((Item) -> Void)? = nil,
-         @ViewBuilder row: @escaping (Item) -> Row) {
+         pick: ((Item) -> Void)? = nil, @ViewBuilder row: @escaping (Item) -> Row) {
         self.prompt = prompt
         self.empty = empty
         self.matches = matches
         self.section = section
         self.pick = pick
-        self.pickAlternate = pickAlternate
         self.row = row
     }
 
@@ -61,7 +57,7 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
                             }
                             Button {
                                 picked = i
-                                choose(item, alternate: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+                                choose(item)
                             } label: {
                                 row(item)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -97,9 +93,6 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
                 case 125: picked = min(picked + 1, max(matches(query).count - 1, 0))
                 case 126: picked = max(picked - 1, 0)
                 case 53: close()
-                case 36 where event.modifierFlags.contains(.command) && pickAlternate != nil:
-                    let found = matches(query)
-                    if found.indices.contains(picked) { choose(found[picked], alternate: true) }
                 default: return event
                 }
                 return nil
@@ -108,8 +101,8 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
         .onDisappear { keys.map(NSEvent.removeMonitor) }
     }
 
-    private func choose(_ item: Item, alternate: Bool = false) {
-        guard let pick = alternate ? pickAlternate ?? pick : pick else { return }
+    private func choose(_ item: Item) {
+        guard let pick else { return }
         close()
         pick(item)
     }

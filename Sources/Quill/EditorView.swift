@@ -79,23 +79,6 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private var fontKey = ""
     /// The notes links were last styled against, to restyle them as notes come and go.
     private var linkedNotes: [URL] = []
-    /// The tab on show, with the open note's undo history; each tab has its own.
-    private var tab: NoteTab.ID?
-    private var undo = UndoManager()
-    /// What the other tabs left when they went behind this one, to come back to as they were.
-    private var parked: [NoteTab.ID: Parked] = [:]
-
-    private struct Parked {
-        let storage: NSTextStorage
-        let undo: UndoManager
-        let selection: NSRange
-        let scroll: NSPoint
-        let diskDate: Date?
-        /// The fonts and notes its text was styled with.
-        let style: String
-    }
-
-    private var style: String { "\(fontKey)-\(linkedNotes.hashValue)" }
 
     init(state: AppState) {
         self.state = state
@@ -112,7 +95,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         state.flushSave = { [weak self] in self?.save() }
         // Edit › Spelling and Grammar and Substitutions change the text view directly.
         tv.textInputChanged = { [weak self] in self?.state.textInput = $0 }
-        tv.openNoteLink = { [weak self] in self?.state.openLink($0, inNewTab: $1) }
+        tv.openNoteLink = { [weak self] in self?.state.openLink($0) }
         tv.linkResolver = { [weak self] in self?.state.links }
         highlighter.linkExists = { [weak self] in self?.state.links.exists($0, from: self?.url) ?? true }
         state.showPendingHeading = { [weak self] in self?.showPendingHeading() }
@@ -149,55 +132,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             tv.focusStyle = state.focusStyle
             tv.updateFocus()
         }
-        show(state.activeTab)
         open(state.openFile)
-    }
-
-    /// Parks the tab going behind with its text, undo history, caret and scroll, and brings
-    /// back the tab coming up as it was left. A tab with nothing parked starts afresh, for
-    /// `open` to load its note.
-    private func show(_ id: NoteTab.ID) {
-        guard id != tab, let tv = textView, let layout = tv.layoutManager, let storage = tv.textStorage else { return }
-        save()
-        tv.breakUndoCoalescing()
-        if let tab, url != nil {
-            parked[tab] = Parked(storage: storage, undo: undo, selection: tv.selectedRange(),
-                                 scroll: tv.enclosingScrollView?.contentView.bounds.origin ?? .zero,
-                                 diskDate: diskDate, style: style)
-        }
-        let open = Set(state.tabs.map(\.id))
-        parked = parked.filter { open.contains($0.key) }
-        tab = id
-
-        guard let note = state.openFile, let back = parked.removeValue(forKey: id) else {
-            let fresh = NSTextStorage()
-            fresh.delegate = highlighter
-            layout.replaceTextStorage(fresh)
-            undo = UndoManager()
-            url = nil
-            diskDate = nil
-            tv.isEditable = false
-            tv.typingAttributes = highlighter.baseAttributes
-            state.stats.update("")
-            return
-        }
-        layout.replaceTextStorage(back.storage)
-        undo = back.undo
-        diskDate = back.diskDate
-        tv.typingAttributes = highlighter.baseAttributes
-        if back.style != style { highlighter.highlightAll(back.storage) }
-        tv.isEditable = true
-        tv.setSelectedRange(back.selection)
-        if let container = tv.textContainer { layout.ensureLayout(for: container) }
-        tv.scroll(back.scroll)
-        // The note may have moved, or changed on disk (another app, or Quill pointing its
-        // links at a note that moved) while its tab was behind.
-        url = note
-        if modificationDate(note) != diskDate { reload(note) }
-        state.stats.update(tv.string)
-        state.finder.search()
-        tv.updateFocus()
-        showPendingHeading()
     }
 
     private func open(_ newURL: URL?) {
@@ -298,8 +233,6 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView?.updateFocus()
         textView?.centerCaret()
         textView?.updateSuggestions()    }
-
-    func undoManager(for view: NSTextView) -> UndoManager? { undo }
 
     // MARK: Files
 

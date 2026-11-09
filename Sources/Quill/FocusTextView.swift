@@ -248,9 +248,8 @@ final class FocusTextView: NSTextView {
 
     // MARK: Links
 
-    /// Called with the note a `[[link]]` names when it's ⌘-clicked, and whether it was
-    /// ⇧⌘-clicked, to open in a new tab.
-    var openNoteLink: ((String, Bool) -> Void)?
+    /// Called with the note a `[[link]]` names when it's ⌘-clicked.
+    var openNoteLink: ((String) -> Void)?
     /// The library's notes, for suggesting them as a link is typed.
     var linkResolver: () -> LinkResolver? = { nil }
     /// The font chosen for the page, for the suggestion list to match.
@@ -266,7 +265,7 @@ final class FocusTextView: NSTextView {
         }
         if event.modifierFlags.contains(.command),
            let target = noteLink(at: convert(event.locationInWindow, from: nil)) {
-            openNoteLink?(target, event.modifierFlags.contains(.shift))
+            openNoteLink?(target)
             return
         }
         super.mouseDown(with: event)
