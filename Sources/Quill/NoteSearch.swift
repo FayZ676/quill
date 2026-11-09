@@ -93,12 +93,17 @@ final class NoteSearch: ObservableObject {
     }
 }
 
-/// The sidebar's search: a box, and under it every line in the library holding what's typed,
-/// by note. The arrow keys move through the lines, Return or a click opens the note there,
-/// Escape goes back to the page.
+/// The sidebar's search: a box, and under it the notes and folders whose names hold what's
+/// typed, as Go To finds them, then every line in the library holding it, by note. The arrow
+/// keys move down through both, Return or a click opens what's picked, Escape goes back to
+/// the page.
 struct NoteSearchView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var search: NoteSearch
+    /// The names that match, at most `fileLimit`: past that, the name wants more typing.
+    @State private var files: [(url: URL, path: String)] = []
+    private static let fileLimit = 10
+    /// Which row is picked: the files first, then the lines after them.
     @State private var picked = 0
     @State private var keys: Any?
     @FocusState private var typing: Bool
@@ -106,11 +111,14 @@ struct NoteSearchView: View {
     var body: some View {
         let matches = search.results.flatMap(\.matches)
         VStack(spacing: 0) {
-            TextField("Search all notes", text: $search.query)
+            TextField("Search names and text", text: $search.query)
                 .textFieldStyle(.plain)
                 .appFont(14)
                 .focused($typing)
-                .onSubmit { if matches.indices.contains(picked) { open(matches[picked]) } }
+                .onSubmit {
+                    if files.indices.contains(picked) { state.goTo(files[picked].url) }
+                    else if matches.indices.contains(picked - files.count) { open(matches[picked - files.count]) }
+                }
                 .onExitCommand { state.closeSidebar() }
                 .padding(.horizontal, 8)
                 .frame(height: 30)
@@ -119,8 +127,8 @@ struct NoteSearchView: View {
                     .strokeBorder(typing ? Color.accentColor : Color.secondary.opacity(0.25), lineWidth: typing ? 2 : 1))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-            if !search.query.isEmpty {
-                Text(summary)
+            if !search.query.isEmpty, files.isEmpty, search.results.isEmpty {
+                Text("No results")
                     .appFont(12)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,18 +138,36 @@ struct NoteSearchView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(search.results) { result in
-                            ResultHeader(result: result)
-                            ForEach(result.matches) { match in
+                        if !files.isEmpty {
+                            SectionTitle(title: "Files", detail: files.count.formatted())
+                            ForEach(Array(files.enumerated()), id: \.element.url) { i, file in
                                 Button {
-                                    picked = match.id
-                                    open(match)
+                                    picked = i
+                                    state.goTo(file.url)
                                 } label: {
-                                    MatchRow(match: match, picked: match.id == picked)
+                                    FileRow(url: file.url, path: file.path, picked: i == picked)
                                 }
                                 .buttonStyle(.plain)
                                 .pointingHandCursor()
-                                .id(match.id)
+                                .id(i)
+                            }
+                        }
+                        if !search.results.isEmpty {
+                            SectionTitle(title: "In Notes", detail: summary)
+                        }
+                        ForEach(search.results) { result in
+                            ResultHeader(result: result)
+                            ForEach(result.matches) { match in
+                                let row = files.count + match.id
+                                Button {
+                                    picked = row
+                                    open(match)
+                                } label: {
+                                    MatchRow(match: match, picked: row == picked)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .id(row)
                             }
                         }
                     }
@@ -153,17 +179,22 @@ struct NoteSearchView: View {
         }
         .onChange(of: search.query) { _ in
             picked = 0
+            findFiles()
             run()
         }
         // The library changed: what it holds may have too.
-        .onChange(of: state.tree) { _ in run() }
+        .onChange(of: state.tree) { _ in
+            findFiles()
+            run()
+        }
         .onChange(of: state.searchFocus) { _ in typing = true }
         .onAppear {
+            findFiles()
             run()
             if state.sidebarShown { typing = true }
             keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 guard state.panel == .search, state.typingInSidebar else { return event }
-                let count = search.results.reduce(0) { $0 + $1.matches.count }
+                let count = files.count + search.count
                 switch event.keyCode {
                 case 125: picked = min(picked + 1, max(count - 1, 0))
                 case 126: picked = max(picked - 1, 0)
@@ -177,9 +208,15 @@ struct NoteSearchView: View {
 
     private var summary: String {
         let count = search.count, notes = search.results.count
-        if count == 0 { return "No results" }
         let more = count >= NoteSearch.limit ? "+" : ""
-        return "\(count.formatted())\(more) result\(count == 1 ? "" : "s") in \(notes) note\(notes == 1 ? "" : "s")"
+        return "\(count.formatted())\(more) in \(notes) note\(notes == 1 ? "" : "s")"
+    }
+
+    /// Names are few and short, so they're matched at once, on the main thread, as Go To does.
+    private func findFiles() {
+        guard !search.query.trimmingCharacters(in: .whitespaces).isEmpty else { return files = [] }
+        let items = state.items.filter { $0 != state.root }.map { (url: $0, path: PathMatch.path(of: $0, in: state.root)) }
+        files = Array(PathMatch.filter(items, by: search.query).prefix(Self.fileLimit))
     }
 
     private func run() {
@@ -189,6 +226,53 @@ struct NoteSearchView: View {
 
     private func open(_ match: NoteMatch) {
         state.openMatch(match.url, at: match.range)
+    }
+}
+
+/// A group's name, small and quiet, with how much it holds.
+private struct SectionTitle: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack {
+            Text(title.uppercased()).appFont(11, bold: true)
+            Spacer(minLength: 4)
+            Text(detail).appFont(11).monospacedDigit()
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+}
+
+/// A note or folder whose name matches, with the folder it's in.
+private struct FileRow: View {
+    let url: URL
+    let path: String
+    let picked: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: url.hasDirectoryPath ? "folder" : "doc.text").foregroundStyle(Color.accentColor)
+            Text(FileNode.displayName(url))
+                .appFont(13)
+                .lineLimit(1)
+            let folder = (path as NSString).deletingLastPathComponent
+            if !folder.isEmpty {
+                Text(folder)
+                    .appFont(12)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 5).fill(picked ? Color.secondary.opacity(0.18) : .clear))
+        .contentShape(Rectangle())
     }
 }
 
