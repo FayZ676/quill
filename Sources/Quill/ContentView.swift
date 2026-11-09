@@ -1017,19 +1017,36 @@ private struct TitleField: View {
     }
 }
 
+/// The page with no note open: start a note, or go to one, as VS Code's empty editor offers.
 private struct EmptyEditor: View {
+    @EnvironmentObject var state: AppState
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 14) {
             Text("Nothing open").appFont(17)
-            Text("Press ⌘N to start writing").appFont(15).foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                choice("New Note", Shortcuts.newFile.label) { state.newFile() }
+                choice("Go To Note", Shortcuts.goTo.label) { state.goingTo = true }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: Theme.background))
     }
+
+    private func choice(_ title: String, _ shortcut: String, action: @escaping () -> Void) -> some View {
+        GridRow {
+            Button(title, action: action)
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .pointingHandCursor()
+            Text(shortcut).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+        }
+        .appFont(15)
+    }
 }
 
-/// A thin bar under the page, as in VS Code: the open note's length on the left, the cheat
-/// sheet and terminal on the right.
+/// A thin bar under the page, as in VS Code: the open note's length in the middle, and Focus,
+/// the cheat sheet, the terminal and the ⋯ menu on the right.
 private struct StatusBar: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var stats: Stats
