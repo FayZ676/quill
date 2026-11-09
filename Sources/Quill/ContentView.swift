@@ -218,10 +218,9 @@ private struct TabStrip: View {
         let shown = state.tabs.count == 1 && state.tabs[0].note == nil ? [] : state.tabs
         HStack(spacing: 4) {
             ForEach(shown) { tab in
-                // Set in from the bar's top and bottom, as the line between Search's groups is
-                // from the sidebar's sides.
+                // As tall as the tabs, so set in from the bar's edges as far as they are.
                 if tab.id != shown.first?.id {
-                    Divider().frame(height: 20)
+                    Divider().frame(height: 40)
                 }
                 TabItem(tab: tab, dragging: drag != nil, lifted: drag?.id == tab.id)
                     // Under the pointer, wherever the tabs have moved its place to.
