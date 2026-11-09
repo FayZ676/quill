@@ -349,8 +349,8 @@ private struct PanelHeader: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                // In the iPhone library's order.
-                GoToButton()
+                // Go To has no button: its magnifying glass would read as Search's, in the
+                // strip beside it. It's ⌘P and in the File menu.
                 NewButton()
             case .search:
                 Text("Search")
@@ -412,16 +412,6 @@ private struct NewButton: View {
         .buttonStyle(.bare)
         .background(MenuAnchorView(anchor: anchor))
         .help("New File or Folder")
-    }
-}
-
-private struct GoToButton: View {
-    @EnvironmentObject var state: AppState
-
-    var body: some View {
-        Button { state.goingTo = true } label: { Image(systemName: "magnifyingglass").toolbarIcon() }
-            .buttonStyle(.bare)
-            .help("Go To (\(Shortcuts.goTo.label))")
     }
 }
 
