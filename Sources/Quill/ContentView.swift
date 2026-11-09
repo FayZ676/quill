@@ -344,9 +344,8 @@ private struct PanelHeader: View {
                 Spacer()
                 // Go To has no button: its magnifying glass would read as Search's, in the
                 // strip beside it. It's ⌘P and in the File menu.
-                // VS Code's icons for these, as the strip follows its activity bar.
-                new(.newFile, help: "New File (\(Shortcuts.newFile.label))") { state.newFile() }
-                new(.newFolder, help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
+                new("doc", help: "New File (\(Shortcuts.newFile.label))") { state.newFile() }
+                new("folder", help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
             case .search:
                 Text("Search")
                     .appFont(13, bold: true)
@@ -357,11 +356,20 @@ private struct PanelHeader: View {
         .frame(minHeight: 30)
     }
 
-    private func new(_ icon: Codicon, help: String, action: @escaping () -> Void) -> some View {
+    /// A document or folder with a plus at its bottom right, the same place on both, as VS
+    /// Code draws them. The system's own badged symbols put the plus in different corners.
+    private func new(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            icon.fill(style: FillStyle(eoFill: true))
-                .frame(width: 20, height: 20)
-                .frame(minWidth: 30, minHeight: 30)
+            Image(systemName: symbol)
+                .font(.system(size: 20))
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        // Cut out of the symbol under it, as a badge is.
+                        .background(Circle().fill(Color(nsColor: Theme.background)).padding(-1.5))
+                        .offset(x: 4, y: 3)
+                }
+                .frame(minWidth: 34, minHeight: 30)
         }
         .buttonStyle(.bare)
         .help(help)

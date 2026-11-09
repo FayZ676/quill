@@ -25,5 +25,3 @@ On first launch, choose the Mac library in iCloud Drive (Documents › Quill) to
 - `Sources/Quill/Shared`: shared by both apps: Markdown highlighting, editing commands, fonts, the file model
 - `iOS/Sources`: the iOS app (library screens, editor, settings); `iOS/project.yml` is the Xcode project spec
 - `Resources/Fonts`: iA Writer Quattro (Sans) and Mono (SIL Open Font License); Serif is the system serif
-- `Sources/Quill/Codicon.swift`: VS Code's New File and New Folder icons, from Microsoft's
-  [Codicons](https://github.com/microsoft/vscode-codicons) (CC BY 4.0)
