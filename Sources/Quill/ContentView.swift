@@ -241,9 +241,7 @@ private struct TabStrip: View {
             }
             Spacer(minLength: 0)
             Button(action: state.newTab) {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .medium))
-                    .frame(width: 26, height: 26)
+                Image(systemName: "plus").toolbarIcon()
             }
             .buttonStyle(.bare)
             .help("New Tab (\(Shortcuts.newTab.label))")
@@ -504,9 +502,7 @@ private struct PanelHeader: View {
                 new("folder", help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
                 // Closes every folder, as VS Code's Collapse Folders in Explorer does.
                 Button { state.expanded = [] } label: {
-                    Image(systemName: "rectangle.compress.vertical")
-                        .font(.system(size: 20))
-                        .frame(minWidth: 34, minHeight: 30)
+                    Image(systemName: "rectangle.compress.vertical").toolbarIcon()
                 }
                 .buttonStyle(.bare)
                 .disabled(state.expanded.isEmpty)
@@ -527,15 +523,15 @@ private struct PanelHeader: View {
     private func new(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 20))
+                .font(.system(size: 15))
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 8, weight: .semibold))
                         // Cut out of the symbol under it, as a badge is.
-                        .background(Circle().fill(Color(nsColor: Theme.background)).padding(-1.5))
-                        .offset(x: 4, y: 3)
+                        .background(Circle().fill(Color(nsColor: Theme.background)).padding(-1.2))
+                        .offset(x: 3, y: 2)
                 }
-                .frame(minWidth: 34, minHeight: 30)
+                .frame(minWidth: 28, minHeight: 30)
         }
         .buttonStyle(.bare)
         .help(help)
@@ -589,9 +585,7 @@ private struct HistoryButtons: View {
 
     private func step(_ symbol: String, help: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 22, height: 26)
+            Image(systemName: symbol).toolbarIcon(width: 24)
         }
         .buttonStyle(.bare)
         .disabled(!enabled)
@@ -1121,12 +1115,12 @@ private struct StatusBar: View {
 }
 
 extension Image {
-    /// Toolbar symbols at a size that's easy to see and hit; the stock ones are tiny.
+    /// The symbols in the strip and the bars, all one size, small enough to stay out of the way.
     /// `nudge` lifts a symbol whose pencil or badge pushes its body down, so the shapes
     /// line up by eye rather than by bounding box. A narrow symbol in a pair takes a
     /// narrower `width`, so the two sit close.
-    func toolbarIcon(nudge: CGFloat = 0, width: CGFloat = 34) -> some View {
-        font(.system(size: 20, weight: .regular))
+    func toolbarIcon(size: CGFloat = 15, nudge: CGFloat = 0, width: CGFloat = 28) -> some View {
+        font(.system(size: size, weight: .regular))
             .offset(y: nudge)
             .frame(minWidth: width, minHeight: 30)
     }
