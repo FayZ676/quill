@@ -128,6 +128,16 @@ struct ContentView: View {
                     .onAppear { page = geometry.frame(in: .global) }
                     .onChange(of: geometry.frame(in: .global)) { page = $0 }
             })
+            // A box of its own, as the bars have, whose border goes with theirs while you
+            // write, leaving the words alone on the page.
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor))
+                    .modifier(FadesWithChrome(chrome: state.chrome))
+                    .allowsHitTesting(false)
+            }
+            .padding(Boxed.inset)
             // Always there, if folded away, so its shells keep running while it's closed.
             TerminalPane()
             // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
