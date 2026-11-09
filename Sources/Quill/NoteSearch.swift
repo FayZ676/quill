@@ -139,7 +139,7 @@ struct NoteSearchView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if !files.isEmpty {
-                            SectionTitle(title: "Files", detail: files.count.formatted())
+                            SectionTitle(title: "Files", symbol: "doc.on.doc", detail: files.count.formatted())
                             ForEach(Array(files.enumerated()), id: \.element.url) { i, file in
                                 Button {
                                     picked = i
@@ -153,7 +153,7 @@ struct NoteSearchView: View {
                             }
                         }
                         if !search.results.isEmpty {
-                            SectionTitle(title: "In Notes", detail: summary)
+                            SectionTitle(title: "In Notes", symbol: "text.magnifyingglass", detail: summary)
                         }
                         ForEach(search.results) { result in
                             ResultHeader(result: result)
@@ -229,16 +229,18 @@ struct NoteSearchView: View {
     }
 }
 
-/// A group's name, small and quiet, with how much it holds.
+/// A group's name and icon, small and quiet, with how much it holds.
 private struct SectionTitle: View {
     let title: String
+    let symbol: String
     let detail: String
 
     var body: some View {
-        HStack {
-            Text(title.uppercased()).appFont(11, bold: true)
+        HStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 11, weight: .medium))
+            Text(title).appFont(12, bold: true)
             Spacer(minLength: 4)
-            Text(detail).appFont(11).monospacedDigit()
+            Text(detail).appFont(12).monospacedDigit()
         }
         .foregroundStyle(.secondary)
         .padding(.horizontal, 6)
