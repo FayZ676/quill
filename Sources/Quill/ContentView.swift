@@ -190,11 +190,13 @@ private struct TabStrip: View {
         HStack(spacing: 4) {
             ForEach(state.tabs) { tab in
                 TabItem(tab: tab)
+                    // Under the pointer, wherever the tabs have moved its place to.
+                    .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
+                    // The tab's place, measured outside the offset: measured inside it, the
+                    // offset would move the place it's worked out from, on and on, and hang.
                     .background(GeometryReader { geometry in
                         Color.clear.preference(key: TabFrames.self, value: [tab.id: geometry.frame(in: .named("tabs"))])
                     })
-                    // Under the pointer, wherever the tabs have moved its place to.
-                    .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
                     .zIndex(drag?.id == tab.id ? 1 : 0)
                     // Alongside the tab's clicks, which a drag's first few points don't cancel.
                     .simultaneousGesture(DragGesture(minimumDistance: 5, coordinateSpace: .named("tabs"))
