@@ -688,12 +688,10 @@ private struct FocusToggle: View {
     var body: some View {
         Button { state.focusEnabled.toggle() } label: {
             Image(systemName: state.focusEnabled ? "eye.fill" : "eye")
-                .font(.system(size: 13))
-                .frame(minWidth: 20, minHeight: 18)
+                .toolbarIcon()
+                .foregroundStyle(state.focusEnabled ? Color.accentColor : Color.secondary)
         }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .foregroundStyle(Color.accentColor)
+        .buttonStyle(.bare)
         .help("Focus Mode (⇧⌘D)")
     }
 }
@@ -711,13 +709,9 @@ private struct MoreButton: View {
             let top = menu.size.height + 4
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? -top : view.bounds.height + top), in: view)
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 13))
-                .frame(minWidth: 20, minHeight: 18)
+            Image(systemName: "ellipsis").toolbarIcon()
         }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .foregroundStyle(Color.accentColor)
+        .buttonStyle(.bare)
         .background(MenuAnchorView(anchor: anchor))
         .help("More")
     }
@@ -1053,7 +1047,8 @@ private struct StatusBar: View {
     @ObservedObject var chrome: ChromeFader
 
     var body: some View {
-        HStack(spacing: 10) {
+        // As tall as the top bar, with its icons and its text's size, as the strip is wide.
+        HStack(spacing: 6) {
             Spacer()
             // Moved down from the top bar, which is the tabs'.
             if !state.showingGraph { FocusToggle() }
@@ -1061,14 +1056,14 @@ private struct StatusBar: View {
             TerminalButton()
             if !state.showingGraph { MoreButton() }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 26)
+        .padding(.horizontal, 14)
+        .frame(height: 48)
         // Centered under the page, whatever the buttons beside it.
         .overlay {
             if state.openFile != nil, !state.showingGraph {
                 let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
                 Text("\(stats.words) words · \(minutes) min read")
-                    .appFont(12)
+                    .appFont(13)
                     .foregroundStyle(.tertiary)
                     .allowsHitTesting(false)
             }
@@ -1078,7 +1073,7 @@ private struct StatusBar: View {
     }
 }
 
-private extension Image {
+extension Image {
     /// Toolbar symbols at a size that's easy to see and hit; the stock ones are tiny.
     /// `nudge` lifts a symbol whose pencil or badge pushes its body down, so the shapes
     /// line up by eye rather than by bounding box. A narrow symbol in a pair takes a
@@ -1091,7 +1086,7 @@ private extension Image {
 }
 
 /// Bar buttons as bare symbols on the page color: no bezel, no hover plate.
-private struct BareButtonStyle: ButtonStyle {
+struct BareButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.secondary)
@@ -1101,6 +1096,6 @@ private struct BareButtonStyle: ButtonStyle {
     }
 }
 
-private extension ButtonStyle where Self == BareButtonStyle {
+extension ButtonStyle where Self == BareButtonStyle {
     static var bare: BareButtonStyle { BareButtonStyle() }
 }

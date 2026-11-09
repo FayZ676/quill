@@ -606,12 +606,10 @@ struct TerminalButton: View {
     var body: some View {
         Button { withAnimation { state.terminalShown.toggle() } } label: {
             Image(systemName: "terminal")
-                .font(.system(size: 13))
-                .frame(minWidth: 20, minHeight: 18)
+                .toolbarIcon()
+                .foregroundStyle(state.terminalShown ? Color.accentColor : Color.secondary)
         }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .foregroundStyle(Color.accentColor)
+        .buttonStyle(.bare)
         .help("\(state.terminalShown ? "Hide" : "Show") Terminal (\(Shortcuts.terminal.label))")
     }
 }
