@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var state: AppState
@@ -45,7 +46,8 @@ struct ContentView: View {
         // Over the page rather than the whole window, as the bars and sidebar would push them
         // off its middle.
         .searchPanel(isPresented: $state.goingTo, over: page) {
-            PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items) { state.goTo($0) }
+            PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items,
+                      pickInNewTab: state.openInNewTab) { state.goTo($0) }
         }
         // From here rather than the button, so it opens just as Go To does.
         .searchPanel(isPresented: $state.showingCheatSheet, over: page) { CheatSheet() }
@@ -161,29 +163,129 @@ struct ContentView: View {
     }
 }
 
-/// The writing column's half of Quill's bar. The title centers over the text, like the word
-/// count below it; Back and Forward sit at its leading edge.
+/// The writing column's half of Quill's bar, kept for tabs, as VS Code's is: Back and Forward,
+/// small and fixed at its leading edge, then a tab for each note open. The page's other
+/// controls are in the bar at the bottom.
 private struct DetailBar: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            HistoryButtons()
+            TabStrip()
+        }
+        .frame(minHeight: 30)
+    }
+}
+
+/// The tabs open, from the leading edge, sharing the room between them once they fill it,
+/// and a button for another.
+private struct TabStrip: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        HStack(spacing: 6) {
-            HistoryButtons()
-            Spacer()
-            if !state.showingGraph {
-                FocusToggle()
-                MoreButton()
+        HStack(spacing: 4) {
+            ForEach(state.tabs) { TabItem(tab: $0) }
+            Button(action: state.newTab) {
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.bare)
+            .help("New Tab (\(Shortcuts.newTab.label))")
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// A tab: its note's name, lit while it's on show. Click it to go to it, and click the one on
+/// show to rename its note. A close button comes up at its end under the pointer.
+private struct TabItem: View {
+    @EnvironmentObject var state: AppState
+    let tab: NoteTab
+    @State private var hovering = false
+
+    /// On show, with the graph not over it.
+    private var current: Bool { tab.id == state.activeTab && !state.showingGraph }
+
+    var body: some View {
+        Group {
+            if current, let note = tab.note {
+                TitleField(file: note, inTab: true)
+            } else {
+                Text(tab.note.map(FileNode.displayName) ?? "New Tab")
+                    .appFont(13)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(current ? .primary : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { state.showTab(tab.id) }
             }
         }
-        // Keeps the bar its height with the buttons gone.
-        .frame(minHeight: 30)
-        .overlay {
-            if state.showingGraph {
-                Text("Graph").appFont(15, bold: true)
-            } else if let file = state.openFile {
-                TitleField(file: file)
+        // Room for the close button either side, so the name stays centered.
+        .padding(.horizontal, 24)
+        .frame(minWidth: 0, maxWidth: 180, minHeight: 28)
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(Color.secondary.opacity(current ? 0.14 : hovering ? 0.07 : 0)))
+        .overlay(alignment: .trailing) {
+            if hovering {
+                Button { state.closeTab(tab.id) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.bare)
+                .padding(.trailing, 5)
+                .help("Close Tab (\(Shortcuts.closeTab.label))")
             }
         }
+        .onHover { inside in
+            hovering = inside
+            if inside {
+                state.hoveredTab = tab.id
+            } else if state.hoveredTab == tab.id {
+                state.hoveredTab = nil
+            }
+        }
+        // As a tab of Quill's own, not text, so the page and the terminal don't take it in.
+        .onDrag {
+            state.draggedTab = tab.id
+            let provider = NSItemProvider()
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.quillTab.identifier, visibility: .ownProcess) {
+                $0(Data(tab.id.uuidString.utf8), nil)
+                return nil
+            }
+            return provider
+        }
+        .onDrop(of: [.quillTab], delegate: TabDrop(target: tab.id, state: state))
+        .contextMenu {
+            Button("Close Tab") { state.closeTab(tab.id) }
+            Button("Close Other Tabs") {
+                for other in state.tabs where other.id != tab.id { state.closeTab(other.id) }
+            }
+        }
+    }
+}
+
+private extension UTType {
+    static let quillTab = UTType(exportedAs: "com.faizififita.quill.tab")
+}
+
+/// Slides the dragged tab into the place of the one it's dragged over.
+private struct TabDrop: DropDelegate {
+    let target: NoteTab.ID
+    let state: AppState
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = state.draggedTab, dragged != target else { return }
+        withAnimation(.easeInOut(duration: 0.15)) { state.moveTab(dragged, to: target) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        state.draggedTab = nil
+        return true
     }
 }
 
@@ -423,7 +525,9 @@ private struct HistoryButtons: View {
 
     private func step(_ symbol: String, help: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).toolbarIcon(width: 22)
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 22, height: 26)
         }
         .buttonStyle(.bare)
         .disabled(!enabled)
@@ -527,6 +631,7 @@ private struct PathPanel: View {
     let prompt: String
     let empty: String
     let items: [URL]
+    var pickInNewTab: ((URL) -> Void)?
     let pick: (URL) -> Void
 
     private struct Found: Identifiable {
@@ -536,7 +641,8 @@ private struct PathPanel: View {
     }
 
     var body: some View {
-        SearchPanel(prompt: prompt, empty: empty, matches: matches, pick: { pick($0.url) }) { item in
+        SearchPanel(prompt: prompt, empty: empty, matches: matches, pick: { pick($0.url) },
+                    pickAlternate: pickInNewTab.map { open in { open($0.url) } }) { item in
             Label {
                 Text(item.path)
                     .appFont(14)
@@ -561,15 +667,17 @@ private struct FocusToggle: View {
     var body: some View {
         Button { state.focusEnabled.toggle() } label: {
             Image(systemName: state.focusEnabled ? "eye.fill" : "eye")
-                .toolbarIcon()
-                .foregroundStyle(state.focusEnabled ? Color.accentColor : Color.secondary)
+                .font(.system(size: 13))
+                .frame(minWidth: 20, minHeight: 18)
         }
-        .buttonStyle(.bare)
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .foregroundStyle(Color.accentColor)
         .help("Focus Mode (⇧⌘D)")
     }
 }
 
-/// Opens the ⋯ menu (see MoreMenu) under itself.
+/// Opens the ⋯ menu (see MoreMenu) over itself, as it's in the bar at the bottom.
 private struct MoreButton: View {
     @EnvironmentObject var state: AppState
     @State private var anchor = MenuAnchor()
@@ -577,11 +685,18 @@ private struct MoreButton: View {
     var body: some View {
         Button {
             guard let view = anchor.view else { return }
-            MoreMenu.make(state).popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.height + 4 : -4), in: view)
+            let menu = MoreMenu.make(state)
+            // The point is where the menu's top left goes.
+            let top = menu.size.height + 4
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? -top : view.bounds.height + top), in: view)
         } label: {
-            Image(systemName: "ellipsis").toolbarIcon()
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13))
+                .frame(minWidth: 20, minHeight: 18)
         }
-        .buttonStyle(.bare)
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .foregroundStyle(Color.accentColor)
         .background(MenuAnchorView(anchor: anchor))
         .help("More")
     }
@@ -647,6 +762,9 @@ struct SidebarView: View {
         if url.hasDirectoryPath {
             Button("New File") { state.newFile(in: url) }
             Button("New Folder") { state.newFolder(in: url) }
+            Divider()
+        } else {
+            Button("Open in New Tab") { state.openInNewTab(url) }
             Divider()
         }
         Button("Add to Chat") { state.addToChat(url) }
@@ -744,6 +862,14 @@ private struct NodeRow: View {
         .tag(node.url)
         // itemProvider, not onDrag: onDrag swallows the clicks that select a List row.
         .itemProvider { NSItemProvider(object: node.url as NSURL) }
+        // For ⌘-click and the middle button to open it in a new tab.
+        .onHover { inside in
+            if inside {
+                state.hoveredRow = node.url
+            } else if state.hoveredRow == node.url {
+                state.hoveredRow = nil
+            }
+        }
         // Dropping on a file files it next to that file, like Obsidian.
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) {
             state.drop($0, into: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
@@ -825,10 +951,11 @@ private struct SidebarFocus: NSViewRepresentable {
     }
 }
 
-/// The open file's name, centered in the title bar; click it to rename the file.
+/// The open file's name, centered in the title bar or in its tab; click it to rename the file.
 private struct TitleField: View {
     @EnvironmentObject var state: AppState
     let file: URL
+    var inTab = false
     @State private var editing = false
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -857,8 +984,8 @@ private struct TitleField: View {
                     .help("Click to rename")
             }
         }
-        .appFont(15, bold: true)
-        .frame(minWidth: 160, maxWidth: 420)
+        .appFont(inTab ? 13 : 15, bold: true)
+        .frame(minWidth: inTab ? 0 : 160, maxWidth: inTab ? .infinity : 420)
         .onChange(of: file) { _ in editing = false }
     }
 
@@ -897,6 +1024,11 @@ private struct StatusBar: View {
                     .allowsHitTesting(false)
             }
             Spacer()
+            // Moved down from the top bar, which is the tabs'.
+            if !state.showingGraph {
+                FocusToggle()
+                MoreButton()
+            }
             CheatSheetButton()
             TerminalButton()
         }

@@ -38,6 +38,11 @@ enum Shortcuts {
     static let code = Shortcut(key: "c", modifiers: [.command, .shift])
     static let link = Shortcut(key: "k")
 
+    static let newTab = Shortcut(key: "t")
+    static let closeTab = Shortcut(key: "w")
+    static let nextTab = Shortcut(key: "]", modifiers: [.command, .shift])
+    static let previousTab = Shortcut(key: "[", modifiers: [.command, .shift])
+
     static let back = Shortcut(key: "-", modifiers: .control)
     static let forward = Shortcut(key: "-", modifiers: [.control, .shift])
     // The sidebar's panels: ⇧⌘ and a letter each, leaving ⌘ and the letter to Markdown.
