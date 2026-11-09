@@ -790,14 +790,16 @@ struct SidebarView: View {
             .onChange(of: state.renameTarget) { target in
                 if let target { withAnimation { proxy.scrollTo(target) } }
             }
-            // A folder picked in Go To, once the folders above it have opened.
+            // The note gone to from elsewhere (a tab, Go To, a link, Back), or a folder picked in
+            // Go To once the folders above it have opened: in the middle at once, not scrolled to
+            // the edge. One picked in the list itself stays where it was clicked or stepped to.
             .onChange(of: state.selection) { selection in
-                guard let selection else { return }
-                DispatchQueue.main.async { withAnimation { proxy.scrollTo(selection) } }
+                guard let selection, !state.typingInSidebar else { return }
+                DispatchQueue.main.async { proxy.scrollTo(selection, anchor: .center) }
             }
             // Back from search, at the open note.
             .onAppear {
-                if let selection = state.selection { DispatchQueue.main.async { proxy.scrollTo(selection) } }
+                if let selection = state.selection { DispatchQueue.main.async { proxy.scrollTo(selection, anchor: .center) } }
             }
             // A new file or folder gets its row once the library's rescan lands.
             .onChange(of: state.tree) { _ in
