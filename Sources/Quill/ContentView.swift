@@ -137,8 +137,8 @@ struct ContentView: View {
         // Stacked rather than inset: the list scrolls under an inset and its top rows
         // would be stuck there.
         return VStack(spacing: 0) {
+            // No line under it, unlike the page's bar: its controls are the panel's own.
             PanelHeader().modifier(TitleBar(chrome: state.chrome))
-            BarDivider(chrome: state.chrome)
             switch state.panel {
             case .explorer: SidebarView()
             case .search: NoteSearchView(search: state.noteSearch)
@@ -327,7 +327,7 @@ private struct ActivityStrip: View {
     }
 }
 
-/// The sidebar's half of Quill's bar: what the panel is, and its buttons.
+/// The top of the sidebar: what the panel is, and its buttons.
 private struct PanelHeader: View {
     @EnvironmentObject var state: AppState
 
@@ -335,14 +335,12 @@ private struct PanelHeader: View {
         HStack(spacing: 6) {
             switch state.panel {
             case .explorer:
-                Text(state.root.lastPathComponent)
-                    .appFont(13, bold: true)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                LibraryButton()
                 Spacer()
                 // Go To has no button: its magnifying glass would read as Search's, in the
                 // strip beside it. It's ⌘P and in the File menu.
-                NewButton()
+                new("doc.badge.plus", help: "New File (\(Shortcuts.newFile.label))") { state.newFile() }
+                new("folder.badge.plus", help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
             case .search:
                 Text("Search")
                     .appFont(13, bold: true)
@@ -351,6 +349,36 @@ private struct PanelHeader: View {
             }
         }
         .frame(minHeight: 30)
+    }
+
+    private func new(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).toolbarIcon(width: 30)
+        }
+        .buttonStyle(.bare)
+        .help(help)
+    }
+}
+
+/// The library's name; click it to open another folder as the library.
+private struct LibraryButton: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Button { state.chooseRoot() } label: {
+            HStack(spacing: 4) {
+                Text(state.root.lastPathComponent)
+                    .appFont(13, bold: true)
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help("Open Another Folder (\(Shortcuts.openFolder.label))")
     }
 }
 
@@ -385,24 +413,6 @@ private struct HistoryButtons: View {
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.35)
         .help(help)
-    }
-}
-
-/// Drops down New File and New Folder.
-private struct NewButton: View {
-    @EnvironmentObject var state: AppState
-    @State private var anchor = MenuAnchor()
-
-    var body: some View {
-        Button {
-            guard let view = anchor.view else { return }
-            NewMenu.make(state).popUp(positioning: nil, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.height + 4 : -4), in: view)
-        } label: {
-            Image(systemName: "plus").toolbarIcon()
-        }
-        .buttonStyle(.bare)
-        .background(MenuAnchorView(anchor: anchor))
-        .help("New File or Folder")
     }
 }
 
