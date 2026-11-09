@@ -22,6 +22,17 @@ struct ContentView: View {
             }
             .clipped()
         }
+        // The strip's box, which takes in the sidebar as it comes out rather than the sidebar
+        // having one of its own. Over both, so the sidebar slides out under its border.
+        .overlay(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor))
+                .frame(width: ActivityStrip.width + (state.sidebarShown ? sidebarWidth : 0))
+                .frame(maxHeight: .infinity)
+                .padding(4)
+                .allowsHitTesting(false)
+                .modifier(FadesWithChrome(chrome: state.chrome))
+        }
         // The window buttons' strip: a shade darker than the page, with a line under it like
         // the one under Quill's bar. Over the content, as the editor reaches up under it; it
         // takes no clicks, so the strip still moves the window. Gives way to the page while
@@ -147,9 +158,12 @@ struct ContentView: View {
             case .search: NoteSearchView(search: state.noteSearch)
             }
         }
-        .modifier(Boxed())
         .background(SidebarAnchor())
+        // Inside the strip's box, whose border is drawn over the two of them.
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
+        .padding([.vertical, .trailing], 4)
+        .background(Color(nsColor: Theme.background))
         // Laid out at its full width and uncovered as it slides, so the list isn't laid
         // out again on every frame of the slide.
         .frame(width: sidebarWidth)
@@ -424,6 +438,7 @@ private struct SidebarEdge: View {
 private struct ActivityStrip: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var chrome: ChromeFader
+    static let width: CGFloat = 48
 
     var body: some View {
         VStack(spacing: 6) {
@@ -436,9 +451,10 @@ private struct ActivityStrip: View {
         }
         // The first icon level with the buttons in Quill's bar.
         .padding(.top, 6)
-        .frame(width: 48)
+        .frame(width: Self.width)
         .frame(maxHeight: .infinity)
-        .modifier(Boxed())
+        // Its box is drawn over it and the sidebar both, so it can take the sidebar in.
+        .padding(4)
         .modifier(FadesWithChrome(chrome: chrome))
     }
 
