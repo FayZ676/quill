@@ -11,63 +11,62 @@ struct ContentView: View {
     @State private var page = CGRect.zero
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                // Stacked rather than inset: the list scrolls under an inset and its top rows
-                // would be stuck there.
-                VStack(spacing: 0) {
-                    // In the sidebar, so they come and go with it. In the iPhone library's order.
-                    HStack(spacing: 6) {
-                        GraphToggle()
-                        Spacer()
-                        GoToButton()
-                        NewButton()
-                    }
-                    .modifier(TitleBar(chrome: state.chrome))
-                    BarDivider(chrome: state.chrome)
-                    SidebarView()
+        HStack(spacing: 0) {
+            // Stacked rather than inset: the list scrolls under an inset and its top rows
+            // would be stuck there.
+            VStack(spacing: 0) {
+                // In the sidebar, so they come and go with it. In the iPhone library's order.
+                HStack(spacing: 6) {
+                    GraphToggle()
+                    Spacer()
+                    GoToButton()
+                    NewButton()
                 }
-                // Laid out at its full width and uncovered as it slides, so the list isn't laid
-                // out again on every frame of the slide.
-                .frame(width: sidebarWidth)
-                .frame(width: state.sidebarShown ? sidebarWidth : 0, alignment: .trailing)
-                .clipped()
-                .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
+                .modifier(TitleBar(chrome: state.chrome))
+                BarDivider(chrome: state.chrome)
+                SidebarView()
+            }
+            // Laid out at its full width and uncovered as it slides, so the list isn't laid
+            // out again on every frame of the slide.
+            .frame(width: sidebarWidth)
+            .frame(width: state.sidebarShown ? sidebarWidth : 0, alignment: .trailing)
+            .clipped()
+            .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
 
-                VStack(spacing: 0) {
-                    ZStack(alignment: .bottom) {
-                        EditorView(state: state)
-                        // Over the editor rather than in its place, so the open document keeps its
-                        // caret and undo history for when you come back.
-                        if state.showingGraph {
-                            GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
-                        } else {
-                            if state.openFile == nil {
-                                EmptyEditor()
-                            }
+            VStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
+                    EditorView(state: state)
+                    // Over the editor rather than in its place, so the open document keeps its
+                    // caret and undo history for when you come back.
+                    if state.showingGraph {
+                        GraphView(graph: state.graph, current: state.openFile, open: state.openNote)
+                    } else {
+                        if state.openFile == nil {
+                            EmptyEditor()
                         }
                     }
-                    .background(GeometryReader { geometry in
-                        Color.clear
-                            .onAppear { page = geometry.frame(in: .global) }
-                            .onChange(of: geometry.frame(in: .global)) { page = $0 }
-                    })
-                    // Always there, if folded away, so its shells keep running while it's closed.
-                    TerminalPane()
                 }
-                // Gives way to the sidebar rather than pushing it off the window.
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .ignoresSafeArea(.container, edges: .bottom)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    VStack(spacing: 0) {
-                        DetailBar().modifier(TitleBar(chrome: state.chrome))
-                        BarDivider(chrome: state.chrome)
-                    }
+                .background(GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { page = geometry.frame(in: .global) }
+                        .onChange(of: geometry.frame(in: .global)) { page = $0 }
+                })
+                // Always there, if folded away, so its shells keep running while it's closed.
+                TerminalPane()
+                // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
+                // runs the full width only when the sidebar is away.
+                BarDivider(chrome: state.chrome)
+                StatusBar(stats: state.stats, chrome: state.chrome)
+            }
+            // Gives way to the sidebar rather than pushing it off the window.
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .ignoresSafeArea(.container, edges: .bottom)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    DetailBar().modifier(TitleBar(chrome: state.chrome))
+                    BarDivider(chrome: state.chrome)
                 }
             }
-            // Across the whole window, under the sidebar and the terminal, as in VS Code.
-            BarDivider(chrome: state.chrome)
-            StatusBar(stats: state.stats, chrome: state.chrome)
         }
         // The window buttons' strip: a shade darker than the page, with a line under it like
         // the one under Quill's bar. Over the content, as the editor reaches up under it; it
@@ -786,8 +785,8 @@ private struct EmptyEditor: View {
     }
 }
 
-/// A thin bar along the bottom of the window, as in VS Code: the open note's length on the
-/// left, the cheat sheet and terminal on the right.
+/// A thin bar under the page, as in VS Code: the open note's length on the left, the cheat
+/// sheet and terminal on the right.
 private struct StatusBar: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var stats: Stats
