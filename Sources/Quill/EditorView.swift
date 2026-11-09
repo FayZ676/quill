@@ -58,12 +58,13 @@ struct EditorView: NSViewRepresentable {
 
 /// Clicks anywhere on the page reach the text, not just those on the text column itself:
 /// the margins, the space below the last line, and whatever the clip view shows around
-/// the text view. Only the scroller keeps its own clicks.
+/// the text view. Only the scroller and the find bar keep their own clicks.
 final class PageScrollView: NSScrollView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
         guard let tv = documentView as? NSTextView, tv.isEditable,
-              !hit.isDescendant(of: verticalScroller ?? hit), !(hit is NSScroller) else { return hit }
+              !hit.isDescendant(of: verticalScroller ?? hit), !(hit is NSScroller),
+              !hit.isDescendant(of: findBarView ?? hit) else { return hit }
         return hit.isDescendant(of: tv) ? hit : tv
     }
 }
