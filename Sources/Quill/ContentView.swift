@@ -159,6 +159,11 @@ struct ContentView: View {
             }
         }
         .background(SidebarAnchor())
+        // Parts it from the strip's icons, set in from the box's ends, as the line between
+        // Search's groups is set in from the sidebar's sides. In a row, so it stands upright.
+        .overlay(alignment: .leading) {
+            HStack(spacing: 0) { Divider() }.padding(.vertical, 14)
+        }
         // Inside the strip's box, whose border is drawn over the two of them.
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
