@@ -139,6 +139,11 @@ struct ContentView: View {
         return VStack(spacing: 0) {
             // No line under it, unlike the page's bar: its controls are the panel's own.
             PanelHeader().modifier(TitleBar(chrome: state.chrome))
+                // Over the space the list leaves above its first row, so the rows sit close
+                // under the buttons, which stay level with the page's bar. Rows scrolled up
+                // go under it.
+                .padding(.bottom, -10)
+                .zIndex(1)
             switch state.panel {
             case .explorer: SidebarView()
             case .search: NoteSearchView(search: state.noteSearch)
