@@ -1025,12 +1025,10 @@ private struct StatusBar: View {
             }
             Spacer()
             // Moved down from the top bar, which is the tabs'.
-            if !state.showingGraph {
-                FocusToggle()
-                MoreButton()
-            }
+            if !state.showingGraph { FocusToggle() }
             CheatSheetButton()
             TerminalButton()
+            if !state.showingGraph { MoreButton() }
         }
         .padding(.horizontal, 10)
         .frame(height: 26)
