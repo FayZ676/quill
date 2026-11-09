@@ -301,7 +301,8 @@ private struct TabItem: View {
         }
         // Room for the close button either side, so the name stays centered.
         .padding(.horizontal, 24)
-        .frame(minWidth: 0, maxWidth: 180, minHeight: 28)
+        // The bar's height, less as much above and below as there is between two tabs.
+        .frame(minWidth: 0, maxWidth: 180, minHeight: 40)
         .background(RoundedRectangle(cornerRadius: 6)
             .fill(Color.secondary.opacity(current ? 0.14 : hovering && !dragging ? 0.07 : 0)))
         // Solid under the tint, the bar's own color, so a tab dragged over another hides it.
