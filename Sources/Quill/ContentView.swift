@@ -223,7 +223,7 @@ private struct TabStrip: View {
                 if tab.id != shown.first?.id {
                     Divider().frame(height: 20)
                 }
-                TabItem(tab: tab, dragging: drag != nil)
+                TabItem(tab: tab, dragging: drag != nil, lifted: drag?.id == tab.id)
                     // Under the pointer, wherever the tabs have moved its place to.
                     .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
                     // The tab's place, measured outside the offset: measured inside it, the
@@ -285,6 +285,8 @@ private struct TabItem: View {
     let tab: NoteTab
     /// A tab's being dragged, so the pointer passing over this one doesn't light it.
     let dragging: Bool
+    /// This is the tab being dragged, which stays lit while it moves.
+    let lifted: Bool
     @State private var hovering = false
 
     /// On show, with the graph not over it.
@@ -309,8 +311,11 @@ private struct TabItem: View {
         .padding(.horizontal, 24)
         // The bar's height, less as much above and below as there is between two tabs.
         .frame(minWidth: 0, maxWidth: 180, minHeight: 40)
-        // No plate to say which tab is on show, its bold name says so; but solid, in the bar's
-        // own color, so a tab dragged over another hides it.
+        // No plate to say which tab is on show, its bold name says so. A faint one under the
+        // pointer shows how far the tab reaches, for its close button and for dragging it.
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(Color.secondary.opacity((hovering && !dragging) || lifted ? 0.1 : 0)))
+        // Solid under that, in the bar's own color, so a tab dragged over another hides it.
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: Theme.background)))
         .overlay(alignment: .trailing) {
             if hovering && !dragging {
