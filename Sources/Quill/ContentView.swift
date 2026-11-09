@@ -189,7 +189,7 @@ private struct TabStrip: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(state.tabs) { tab in
-                TabItem(tab: tab)
+                TabItem(tab: tab, dragging: drag != nil)
                     // Under the pointer, wherever the tabs have moved its place to.
                     .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
                     // The tab's place, measured outside the offset: measured inside it, the
@@ -198,6 +198,8 @@ private struct TabStrip: View {
                         Color.clear.preference(key: TabFrames.self, value: [tab.id: geometry.frame(in: .named("tabs"))])
                     })
                     .zIndex(drag?.id == tab.id ? 1 : 0)
+                    // The others slide out of its way, but it stays with the pointer.
+                    .transaction { if drag?.id == tab.id { $0.animation = nil } }
                     // Alongside the tab's clicks, which a drag's first few points don't cancel.
                     .simultaneousGesture(DragGesture(minimumDistance: 5, coordinateSpace: .named("tabs"))
                         .onChanged { moved(tab.id, $0) }
@@ -223,6 +225,13 @@ private struct TabStrip: View {
         }
         drag?.x = value.location.x
         guard let target = state.tabs.first(where: { $0.id != id && frames[$0.id]?.contains(CGPoint(x: value.location.x, y: frames[$0.id]!.midY)) == true }) else { return }
+        // Where the dragged tab's place goes, ahead of its being measured there a frame on:
+        // a frame with its offset worked out from the old place would flash the tab away.
+        if let from = state.tabs.firstIndex(where: { $0.id == id }), let place = frames[id], let over = frames[target.id] {
+            let rightward = state.tabs.firstIndex(where: { $0.id == target.id })! > from
+            frames[id] = CGRect(x: rightward ? over.maxX - place.width : over.minX, y: place.minY,
+                                width: place.width, height: place.height)
+        }
         withAnimation(.easeInOut(duration: 0.15)) { state.moveTab(id, to: target.id) }
     }
 }
@@ -239,6 +248,8 @@ private struct TabFrames: PreferenceKey {
 private struct TabItem: View {
     @EnvironmentObject var state: AppState
     let tab: NoteTab
+    /// A tab's being dragged, so the pointer passing over this one doesn't light it.
+    let dragging: Bool
     @State private var hovering = false
 
     /// On show, with the graph not over it.
@@ -263,11 +274,11 @@ private struct TabItem: View {
         .padding(.horizontal, 24)
         .frame(minWidth: 0, maxWidth: 180, minHeight: 28)
         .background(RoundedRectangle(cornerRadius: 6)
-            .fill(Color.secondary.opacity(current ? 0.14 : hovering ? 0.07 : 0)))
+            .fill(Color.secondary.opacity(current ? 0.14 : hovering && !dragging ? 0.07 : 0)))
         // Solid under the tint, the bar's own color, so a tab dragged over another hides it.
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: Theme.background)))
         .overlay(alignment: .trailing) {
-            if hovering {
+            if hovering && !dragging {
                 Button { state.closeTab(tab.id) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
