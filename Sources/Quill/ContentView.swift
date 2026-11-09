@@ -397,40 +397,24 @@ private struct FadesWithChrome: ViewModifier {
     }
 }
 
-/// Row icons in the accent color, as a split view's sidebar draws them, and white on a row
-/// lit in the accent.
+/// Row icons in the accent color, as a split view's sidebar draws them.
 private struct AccentIcon: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         Label {
             configuration.title
         } icon: {
-            Icon(icon: configuration.icon)
-        }
-    }
-
-    private struct Icon: View {
-        let icon: LabelStyleConfiguration.Icon
-        @Environment(\.sidebarRowLit) private var lit
-
-        var body: some View {
-            icon.foregroundStyle(lit ? AnyShapeStyle(.white) : AnyShapeStyle(.tint))
+            configuration.icon.foregroundStyle(.tint)
         }
     }
 }
 
 private struct SidebarFocusedKey: EnvironmentKey { static let defaultValue = false }
-private struct SidebarRowLitKey: EnvironmentKey { static let defaultValue = false }
 
 private extension EnvironmentValues {
     /// You're typing in the sidebar, rather than the page or the terminal.
     var sidebarFocused: Bool {
         get { self[SidebarFocusedKey.self] }
         set { self[SidebarFocusedKey.self] = newValue }
-    }
-    /// The row is the selected one, lit in the accent while you're in the sidebar.
-    var sidebarRowLit: Bool {
-        get { self[SidebarRowLitKey.self] }
-        set { self[SidebarRowLitKey.self] = newValue }
     }
 }
 
@@ -875,12 +859,13 @@ private struct NodeRow: View {
     let node: FileNode
     @FocusState private var editing: Bool
     @State private var dropTargeted = false
+    @State private var hovering = false
 
     private var symbol: String { node.isDirectory ? "folder" : "doc.text" }
     private var selected: Bool { state.selection == node.url }
-    /// Full accent while you're in the sidebar; the page's softer selection color while you're
-    /// elsewhere, so the open file still stands out.
-    private var lit: Bool { selected && sidebarFocused }
+    /// A faint fill, as a tab has, to show how far the row reaches: under the pointer, and on
+    /// the picked row while the arrow keys move through the list.
+    private var filled: Bool { hovering || (selected && sidebarFocused) }
 
     var body: some View {
         Group {
@@ -903,12 +888,14 @@ private struct NodeRow: View {
             } else {
                 Label {
                     HStack {
+                        // Picked out as the tab on show is: bold, the rest dimmed, no plate.
                         Text(node.name)
                             // Set on the row itself: the sidebar's own font would win over one
                             // inherited from the window.
-                            .appFont(14)
+                            .appFont(14, bold: selected)
                             .lineLimit(1)
-                            .foregroundStyle(state.syncStates[node.url] == .notDownloaded ? .secondary : .primary)
+                            .foregroundStyle(selected ? .primary
+                                             : state.syncStates[node.url] == .notDownloaded ? .tertiary : .secondary)
                         Spacer()
                         if state.syncStates[node.url] == nil {
                             if node.isDirectory {
@@ -931,6 +918,7 @@ private struct NodeRow: View {
         .itemProvider { NSItemProvider(object: node.url as NSURL) }
         // For ⌘-click and the middle button to open it in a new tab.
         .onHover { inside in
+            hovering = inside
             if inside {
                 state.hoveredRow = node.url
             } else if state.hoveredRow == node.url {
@@ -946,19 +934,15 @@ private struct NodeRow: View {
                 RoundedRectangle(cornerRadius: 4).fill(Color.accentColor.opacity(0.2)).padding(-4)
             }
         }
-        .foregroundStyle(lit ? Color.white : Color.primary)
-        .environment(\.sidebarRowLit, lit)
         .listRowBackground(
             RoundedRectangle(cornerRadius: 5)
-                .fill(lit ? Color.accentColor : Color(nsColor: Theme.selection))
-                .opacity(selected ? 1 : 0)
+                .fill(Color.secondary.opacity(filled ? 0.1 : 0))
                 .padding(.horizontal, 10))
     }
 }
 
-/// Turns off AppKit's highlight of the sidebar's selected row, which `NodeRow` draws in its
-/// place, and says whether you're typing in the sidebar. AppKit's own highlight goes a
-/// wallpaper-tinted gray once you're typing elsewhere, which hides the open file.
+/// Turns off AppKit's highlight of the sidebar's selected row, which `NodeRow` marks its own
+/// way, and says whether you're typing in the sidebar.
 private struct SidebarFocus: NSViewRepresentable {
     @Binding var focused: Bool
 
