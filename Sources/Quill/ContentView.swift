@@ -502,6 +502,16 @@ private struct PanelHeader: View {
                 // strip beside it. It's ⌘P and in the File menu.
                 new("doc", help: "New File (\(Shortcuts.newFile.label))") { state.newFile() }
                 new("folder", help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
+                // Closes every folder, as VS Code's Collapse Folders in Explorer does.
+                Button { state.expanded = [] } label: {
+                    Image(systemName: "rectangle.compress.vertical")
+                        .font(.system(size: 20))
+                        .frame(minWidth: 34, minHeight: 30)
+                }
+                .buttonStyle(.bare)
+                .disabled(state.expanded.isEmpty)
+                .opacity(state.expanded.isEmpty ? 0.35 : 1)
+                .help("Collapse All")
             case .search:
                 Text("Search")
                     .appFont(13, bold: true)
