@@ -47,7 +47,7 @@ struct ContentView: View {
         // off its middle.
         .searchPanel(isPresented: $state.goingTo, over: page) {
             PathPanel(prompt: "Type a document or folder", empty: "Nothing Matches", items: state.items,
-                      pickInNewTab: state.openInNewTab) { state.goTo($0) }
+                      pickAlternate: state.goTo) { state.openInNewTab($0) }
         }
         // From here rather than the button, so it opens just as Go To does.
         .searchPanel(isPresented: $state.showingCheatSheet, over: page) { CheatSheet() }
@@ -634,7 +634,8 @@ private struct PathPanel: View {
     let prompt: String
     let empty: String
     let items: [URL]
-    var pickInNewTab: ((URL) -> Void)?
+    /// What ⌘Return does instead of `pick`.
+    var pickAlternate: ((URL) -> Void)?
     let pick: (URL) -> Void
 
     private struct Found: Identifiable {
@@ -645,7 +646,7 @@ private struct PathPanel: View {
 
     var body: some View {
         SearchPanel(prompt: prompt, empty: empty, matches: matches, pick: { pick($0.url) },
-                    pickAlternate: pickInNewTab.map { open in { open($0.url) } }) { item in
+                    pickAlternate: pickAlternate.map { open in { open($0.url) } }) { item in
             Label {
                 Text(item.path)
                     .appFont(14)

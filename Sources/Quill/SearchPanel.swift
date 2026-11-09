@@ -15,7 +15,8 @@ struct SearchPanel<Item: Identifiable, Row: View>: View {
     let section: (Item) -> String?
     /// What Return or a click does with an item; nothing, for a list only to read.
     let pick: ((Item) -> Void)?
-    /// What ⌘Return or a ⌘-click does instead, if anything: Go To opens a note in a new tab.
+    /// What ⌘Return or a ⌘-click does instead, if anything: Go To opens a note in the tab
+    /// you're on, rather than a new one.
     let pickAlternate: ((Item) -> Void)?
     let row: (Item) -> Row
     @State private var query = ""

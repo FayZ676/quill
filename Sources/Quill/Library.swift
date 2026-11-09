@@ -345,6 +345,8 @@ final class AppState: ObservableObject {
     func openInNewTab(_ url: URL) {
         guard !url.hasDirectoryPath else { return goTo(url) }
         if let tab = tabs.first(where: { $0.note == url }) { return showTab(tab.id) }
+        // An empty tab, as ⌘T leaves, takes the note rather than another tab opening beside it.
+        if openFile == nil { return openNote(url) }
         let tab = NoteTab(note: url)
         tabs.insert(tab, at: active + 1)
         showTab(tab.id)

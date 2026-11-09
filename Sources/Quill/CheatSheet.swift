@@ -70,7 +70,7 @@ private let sections = [
         Entry(title: "Close Tab", shortcut: Shortcuts.closeTab.label, also: "middle-click"),
         Entry(title: "Open in New Tab", shortcut: "⌘-click", also: "sidebar library document middle-click"),
         Entry(title: "Open a Link in New Tab", shortcut: "⇧⌘-click", also: "wiki link follow"),
-        Entry(title: "Go To in New Tab", shortcut: "⌘↩", also: "open pick"),
+        Entry(title: "Go To in This Tab", shortcut: "⌘↩", also: "open pick replace current"),
         Entry(title: "Next Tab", shortcut: "⌃⇥  \(Shortcuts.nextTab.label)", also: "switch right"),
         Entry(title: "Previous Tab", shortcut: "⌃⇧⇥  \(Shortcuts.previousTab.label)", also: "switch left"),
         Entry(title: "Go to a Tab", shortcut: "⌘1 – ⌘9", also: "switch number"),
