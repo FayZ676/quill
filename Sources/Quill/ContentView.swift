@@ -312,10 +312,10 @@ private struct TabItem: View {
                     .onTapGesture { state.showTab(tab.id) }
             }
         }
-        // Room at the end for the close button, kept while it's away so the tab doesn't
-        // change width under the pointer.
+        // As much room either side of the name, and more at the end, eased open, only while
+        // the pointer is over the tab and its close button is there.
         .padding(.leading, 12)
-        .padding(.trailing, 28)
+        .padding(.trailing, hovering && !dragging ? 28 : 12)
         // As wide as its name, up to a cap past which the name is cut short; the bar's
         // height, less as much above and below as there is between two tabs.
         .frame(maxWidth: 180, minHeight: 40)
@@ -340,7 +340,8 @@ private struct TabItem: View {
             }
         }
         .onHover { inside in
-            hovering = inside
+            // Eased, so the tabs beside it slide over for its close button rather than jump.
+            withAnimation(.easeOut(duration: 0.15)) { hovering = inside }
             if inside {
                 state.hoveredTab = tab.id
             } else if state.hoveredTab == tab.id {
