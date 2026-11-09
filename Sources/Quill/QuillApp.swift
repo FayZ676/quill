@@ -39,16 +39,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         // A mouse's back and forward buttons step through the notes opened, as in a browser.
+        // The middle button closes the tab under it, or opens the document under it in a new
+        // tab, as in a browser.
         NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
+            let state = AppState.shared
             switch event.buttonNumber {
-            case 3: AppState.shared.goBack()
-            case 4: AppState.shared.goForward()
+            case 2 where state.hoveredTab != nil: state.hoveredTab.map(state.closeTab)
+            case 2 where Self.overSidebarRow(event): state.hoveredRow.map(state.openInNewTab)
+            case 3: state.goBack()
+            case 4: state.goForward()
             default: return event
             }
             return nil
         }
+        // ⌘-click opens a document in the sidebar in a new tab. Taken before the list sees it,
+        // as the list would otherwise open it in this one.
+        NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            let state = AppState.shared
+            guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  Self.overSidebarRow(event), let row = state.hoveredRow, !row.hasDirectoryPath
+            else { return event }
+            state.openInNewTab(row)
+            return nil
+        }
+        // ⌃Tab and ⌃⇧Tab step through the tabs, and ⌘1 to ⌘9 go to one, as in Safari.
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let state = AppState.shared
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard state.tabs.count > 1, event.window?.attachedSheet == nil else { return event }
+            if event.keyCode == 48, flags.subtracting(.shift) == .control {
+                state.stepTab(flags.contains(.shift) ? -1 : 1)
+                return nil
+            }
+            if flags == .command, let digit = event.charactersIgnoringModifiers.flatMap(Int.init), (1...9).contains(digit) {
+                state.showTab(at: digit == 9 ? Int.max : digit - 1)
+                return nil
+            }
+            return event
+        }
         Fonts.registerBundled()
         AppState.shared.appearance.apply()
+    }
+
+    /// The pointer is on a row of the sidebar: the row the sidebar last saw it over is still
+    /// the one under it.
+    private static func overSidebarRow(_ event: NSEvent) -> Bool {
+        guard AppState.shared.hoveredRow != nil,
+              var view = event.window?.contentView?.hitTest(event.locationInWindow) else { return false }
+        while !(view is NSOutlineView) {
+            guard let parent = view.superview else { return false }
+            view = parent
+        }
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -84,6 +126,8 @@ struct QuillCommands: Commands {
                 .keyboardShortcut(Shortcuts.newFile)
             Button("New Folder") { state.newFolder() }
                 .keyboardShortcut(Shortcuts.newFolder)
+            Button("New Tab") { state.newTab() }
+                .keyboardShortcut(Shortcuts.newTab)
             Button("Go To…") { state.goingTo = true }
                 .keyboardShortcut(Shortcuts.goTo)
             Divider()
@@ -92,6 +136,15 @@ struct QuillCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
+            // The last tab closes the window, as in Safari.
+            Button(state.tabs.count > 1 ? "Close Tab" : "Close Window") {
+                if state.tabs.count > 1 {
+                    state.closeTab(state.activeTab)
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+            }
+            .keyboardShortcut(Shortcuts.closeTab)
             Button("Save") { state.flushSave() }
                 .keyboardShortcut(Shortcuts.save)
             Button("Rename…") { state.currentItem.map(state.beginRename) }
@@ -181,6 +234,16 @@ struct QuillCommands: Commands {
             Picker("Appearance", selection: $state.appearance) {
                 ForEach(Appearance.allCases) { Text($0.rawValue).tag($0) }
             }
+            Divider()
+        }
+
+        CommandGroup(before: .windowList) {
+            Button("Show Previous Tab") { state.stepTab(-1) }
+                .keyboardShortcut(Shortcuts.previousTab)
+                .disabled(state.tabs.count < 2)
+            Button("Show Next Tab") { state.stepTab(1) }
+                .keyboardShortcut(Shortcuts.nextTab)
+                .disabled(state.tabs.count < 2)
             Divider()
         }
 
