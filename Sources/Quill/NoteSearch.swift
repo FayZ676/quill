@@ -153,6 +153,12 @@ struct NoteSearchView: View {
                             }
                         }
                         if !search.results.isEmpty {
+                            // Set in from the sidebar's edges, as it parts what's in the panel.
+                            if !files.isEmpty {
+                                Divider()
+                                    .padding(.horizontal, 6)
+                                    .padding(.top, 8)
+                            }
                             SectionTitle(title: "In Notes", symbol: "text.magnifyingglass", detail: summary)
                         }
                         ForEach(search.results) { result in
