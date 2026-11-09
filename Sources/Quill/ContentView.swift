@@ -1116,7 +1116,8 @@ private struct StatusBar: View {
         HStack(spacing: 6) {
             Spacer()
             // Moved down from the top bar, which is the tabs'.
-            if !state.showingGraph { FocusToggle() }
+            // Only with a note open: with nothing on the page, there's nothing to focus on.
+            if state.openFile != nil, !state.showingGraph { FocusToggle() }
             CheatSheetButton()
             TerminalButton()
             if !state.showingGraph { MoreButton() }
