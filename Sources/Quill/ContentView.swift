@@ -218,6 +218,11 @@ private struct TabStrip: View {
         let shown = state.tabs.count == 1 && state.tabs[0].note == nil ? [] : state.tabs
         HStack(spacing: 4) {
             ForEach(shown) { tab in
+                // Set in from the bar's top and bottom, as the line between Search's groups is
+                // from the sidebar's sides.
+                if tab.id != shown.first?.id {
+                    Divider().frame(height: 20)
+                }
                 TabItem(tab: tab, dragging: drag != nil)
                     // Under the pointer, wherever the tabs have moved its place to.
                     .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
@@ -272,8 +277,9 @@ private struct TabFrames: PreferenceKey {
     }
 }
 
-/// A tab: its note's name, lit while it's on show. Click it to go to it, and click the one on
-/// show to rename its note. A close button comes up at its end under the pointer.
+/// A tab: its note's name, bold while it's on show and dimmed while it isn't. Click it to go
+/// to it, and click the one on show to rename its note. A close button comes up at its end
+/// under the pointer.
 private struct TabItem: View {
     @EnvironmentObject var state: AppState
     let tab: NoteTab
@@ -303,9 +309,8 @@ private struct TabItem: View {
         .padding(.horizontal, 24)
         // The bar's height, less as much above and below as there is between two tabs.
         .frame(minWidth: 0, maxWidth: 180, minHeight: 40)
-        .background(RoundedRectangle(cornerRadius: 6)
-            .fill(Color.secondary.opacity(current ? 0.14 : hovering && !dragging ? 0.07 : 0)))
-        // Solid under the tint, the bar's own color, so a tab dragged over another hides it.
+        // No plate to say which tab is on show, its bold name says so; but solid, in the bar's
+        // own color, so a tab dragged over another hides it.
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: Theme.background)))
         .overlay(alignment: .trailing) {
             if hovering && !dragging {
