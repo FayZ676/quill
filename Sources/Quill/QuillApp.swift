@@ -78,6 +78,15 @@ struct QuillCommands: Commands {
         }
     }
 
+    /// Searches the open note with the find bar over the page, from wherever you are.
+    private func find(_ action: NSTextFinder.Action) {
+        guard let tv = state.textView else { return }
+        state.focusEditor()
+        let item = NSMenuItem()
+        item.tag = action.rawValue
+        tv.performFindPanelAction(item)
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New File") { state.newFile() }
@@ -103,6 +112,23 @@ struct QuillCommands: Commands {
             Button("Move to Trash") { state.currentItem.map(state.trash) }
                 .keyboardShortcut(Shortcuts.trash)
                 .disabled(state.currentItem == nil)
+        }
+
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Menu("Find") {
+                Button("Find…") { find(.showFindInterface) }
+                    .keyboardShortcut(Shortcuts.find)
+                Button("Find and Replace…") { find(.showReplaceInterface) }
+                    .keyboardShortcut(Shortcuts.replace)
+                Button("Find Next") { find(.nextMatch) }
+                    .keyboardShortcut(Shortcuts.findNext)
+                Button("Find Previous") { find(.previousMatch) }
+                    .keyboardShortcut(Shortcuts.findPrevious)
+                Button("Use Selection for Find") { find(.setSearchString) }
+                    .keyboardShortcut(Shortcuts.useSelection)
+            }
+            .disabled(state.textView == nil)
         }
 
         CommandMenu("Format") {

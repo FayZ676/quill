@@ -588,9 +588,10 @@ final class AppState: ObservableObject {
 
     ## Getting Around
 
-    - ⇧⌘O jumps to any document or folder as you type part of its name, the ones you opened last first
-    - ⌘[ and ⌘] go back and forward through the documents you've opened
-    - ⌃⌘S shows or hides the library, where you can drag files to move them or right-click one for more
+    - ⇧⌘F jumps to any document or folder as you type part of its name, the ones you opened last first
+    - ⌃- and ⌃⇧- go back and forward through the documents you've opened
+    - ⌘B shows or hides the library, where you can drag files to move them or right-click one for more
+    - ⌘F finds and ⌥⌘F replaces text in the document you're on
     - ⌘N creates a new document, and ⌘O picks a different folder as your library
 
     ## Links
@@ -599,7 +600,7 @@ final class AppState: ObservableObject {
 
     ## Writing with AI
 
-    Press ⌃` to open a terminal under the page. It starts Claude Code or Codex in the open document's folder and tells it which document you're on, so you can ask it to edit, research or reorganize. Switch it to your whole library at the top of the pane, and right-click a document in the library and choose _Add to Chat_ to bring it into the conversation.
+    Press ⌘` to open a terminal under the page. It starts Claude Code or Codex in the open document's folder and tells it which document you're on, so you can ask it to edit, research or reorganize. Switch it to your whole library at the top of the pane, and right-click a document in the library and choose _Add to Chat_ to bring it into the conversation.
 
     ## Make It Yours
 

@@ -45,6 +45,13 @@ private let sections = [
         Entry(title: "Link to a Heading", markdown: "[[Note#Heading]]", also: "wiki link section anchor"),
         Entry(title: "Show Other Text", markdown: "[[Note|text]]", also: "wiki link alias label"),
     ]),
+    EntrySection(title: "Find", entries: [
+        Entry(title: "Find", shortcut: Shortcuts.find.label, also: "search note text"),
+        Entry(title: "Find and Replace", shortcut: Shortcuts.replace.label, also: "search substitute change"),
+        Entry(title: "Find Next", shortcut: Shortcuts.findNext.label, also: "search again"),
+        Entry(title: "Find Previous", shortcut: Shortcuts.findPrevious.label, also: "search back"),
+        Entry(title: "Use Selection for Find", shortcut: Shortcuts.useSelection.label, also: "search selected"),
+    ]),
     EntrySection(title: "Notes and Folders", entries: [
         Entry(title: "New File", shortcut: Shortcuts.newFile.label, also: "note document create"),
         Entry(title: "New Folder", shortcut: Shortcuts.newFolder.label, also: "create directory"),

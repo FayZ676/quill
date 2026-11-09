@@ -612,6 +612,6 @@ struct TerminalButton: View {
         .buttonStyle(.plain)
         .pointingHandCursor()
         .foregroundStyle(Color.accentColor)
-        .help(state.terminalShown ? "Hide Terminal (⌃`)" : "Show Terminal (⌃`)")
+        .help("\(state.terminalShown ? "Hide" : "Show") Terminal (\(Shortcuts.terminal.label))")
     }
 }

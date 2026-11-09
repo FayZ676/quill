@@ -271,7 +271,7 @@ private struct SidebarToggle: View {
             Image(systemName: "sidebar.left").toolbarIcon()
         }
         .buttonStyle(.bare)
-        .help("Show or Hide Sidebar (⌃⌘S)")
+        .help("Show or Hide Sidebar (\(Shortcuts.sidebar.label))")
     }
 }
 
@@ -282,8 +282,8 @@ private struct HistoryButtons: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            step("chevron.left", help: "Back (⌘[)", enabled: !state.backStack.isEmpty, state.goBack)
-            step("chevron.right", help: "Forward (⌘])", enabled: !state.forwardStack.isEmpty, state.goForward)
+            step("chevron.left", help: "Back (\(Shortcuts.back.label))", enabled: !state.backStack.isEmpty, state.goBack)
+            step("chevron.right", help: "Forward (\(Shortcuts.forward.label))", enabled: !state.forwardStack.isEmpty, state.goForward)
         }
         .padding(.leading, 8)
     }
@@ -323,7 +323,7 @@ private struct GoToButton: View {
     var body: some View {
         Button { state.goingTo = true } label: { Image(systemName: "magnifyingglass").toolbarIcon() }
             .buttonStyle(.bare)
-            .help("Go To (⇧⌘O)")
+            .help("Go To (\(Shortcuts.goTo.label))")
     }
 }
 
