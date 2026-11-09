@@ -264,6 +264,8 @@ private struct TabItem: View {
         .frame(minWidth: 0, maxWidth: 180, minHeight: 28)
         .background(RoundedRectangle(cornerRadius: 6)
             .fill(Color.secondary.opacity(current ? 0.14 : hovering ? 0.07 : 0)))
+        // Solid under the tint, the bar's own color, so a tab dragged over another hides it.
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: Theme.background)))
         .overlay(alignment: .trailing) {
             if hovering {
                 Button { state.closeTab(tab.id) } label: {
