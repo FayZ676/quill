@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Every shortcut, and how to write each kind of formatting, for the button by the word count
+/// Every shortcut, and how to write each kind of formatting, for the button in the bar at the bottom
 /// and ⌘/. The iPhone has its Markdown toolbar for this; the Mac has only the page. The
 /// shortcuts come from `Shortcuts`, as the menus' do.
 private struct Entry: Identifiable {
@@ -92,7 +92,7 @@ private let entries = sections.flatMap { section in
     }
 }
 
-/// The button by the word count; opens the cheat sheet.
+/// The button in the bar at the bottom; opens the cheat sheet.
 struct CheatSheetButton: View {
     @EnvironmentObject var state: AppState
 

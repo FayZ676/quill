@@ -599,7 +599,7 @@ enum ZshIntegration {
     }
 }
 
-/// The button by the word count; opens and closes the terminal.
+/// The button in the bar at the bottom; opens and closes the terminal.
 struct TerminalButton: View {
     @EnvironmentObject var state: AppState
 

@@ -41,7 +41,7 @@ final class AppState: ObservableObject {
     @Published var sidebarShown = true
     /// The Go To panel, for finding a document or folder by its path.
     @Published var goingTo = false
-    /// The cheat sheet of shortcuts and Markdown, opened from the button by the word count or ⌘/.
+    /// The cheat sheet of shortcuts and Markdown, opened from the button in the bar at the bottom or ⌘/.
     @Published var showingCheatSheet = false
     /// The terminal under the page. Animate changes so it slides.
     @Published var terminalShown = false
@@ -578,7 +578,7 @@ final class AppState: ObservableObject {
 
     Quill is a quiet place to write. Your documents are plain **Markdown** files in a folder on your Mac, so they're yours forever. Everything saves automatically.
 
-    Press ⌘/ at any time for every shortcut and all the Markdown, or click ⌘ by the word count.
+    Press ⌘/ at any time for every shortcut and all the Markdown, or click ⌘ in the bar at the bottom.
 
     ## Focus
 
