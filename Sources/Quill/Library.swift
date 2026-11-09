@@ -162,16 +162,11 @@ final class AppState: ObservableObject {
         get { tabs[active].note }
         set { tabs[active].note = newValue }
     }
-    /// The notes opened before the open one in its tab, the latest last, for Back; and the ones
-    /// gone back from, for Forward. As in a browser, opening a note clears Forward.
-    private(set) var backStack: [URL] {
-        get { tabs[active].back }
-        set { tabs[active].back = newValue }
-    }
-    private(set) var forwardStack: [URL] {
-        get { tabs[active].forward }
-        set { tabs[active].forward = newValue }
-    }
+    /// The notes you were on before the one on show, the latest last, for Back; and the ones
+    /// gone back from, for Forward. One history for all the tabs, as VS Code's: going to
+    /// another tab is a step in it too. As in a browser, a new step clears Forward.
+    @Published private(set) var backStack: [URL] = []
+    @Published private(set) var forwardStack: [URL] = []
 
     private var targetDirectory: URL {
         guard let s = selection else { return root }
@@ -250,10 +245,8 @@ final class AppState: ObservableObject {
         defaults.set(root.path, forKey: "root")
         loading = true
         closeTabs { !isInside($0, root) }
-        for i in tabs.indices {
-            tabs[i].back = []
-            tabs[i].forward = []
-        }
+        backStack = []
+        forwardStack = []
         selection = openFile
         startRecents()
         startWatching()
@@ -366,7 +359,9 @@ final class AppState: ObservableObject {
         guard tabs.contains(where: { $0.id == id }) else { return }
         if id != activeTab {
             flushSave()
+            let left = openFile
             activeTab = id
+            leave(left)
         }
         showingGraph = false
         selection = openFile
@@ -390,9 +385,10 @@ final class AppState: ObservableObject {
         showTab(tabs[min(index, tabs.count - 1)].id)
     }
 
-    /// Closes a tab, going to the one after it, or before it at the end. The last tab stays.
+    /// Closes a tab, going to the one after it, or before it at the end. The last tab is left
+    /// empty rather than closed. Back opens the note it was on again.
     func closeTab(_ id: NoteTab.ID) {
-        guard tabs.count > 1, let i = tabs.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = tabs.firstIndex(where: { $0.id == id }) else { return }
         // The pointer leaving a tab that's gone isn't always heard.
         if hoveredTab == id { hoveredTab = nil }
         guard id == activeTab else {
@@ -400,9 +396,19 @@ final class AppState: ObservableObject {
             return
         }
         flushSave()
+        let left = openFile
+        if tabs.count == 1 {
+            // A new tab rather than this one emptied, so the page starts afresh.
+            let empty = NoteTab()
+            tabs = [empty]
+            activeTab = empty.id
+            selection = nil
+            return leave(left)
+        }
         let next = tabs[i + 1 < tabs.count ? i + 1 : i - 1].id
         activeTab = next
         tabs.remove(at: i)
+        leave(left)
         showTab(next)
     }
 
@@ -413,13 +419,11 @@ final class AppState: ObservableObject {
         tabs.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
     }
 
-    /// Closes the tabs on notes that are gone, and takes them out of every tab's history.
+    /// Closes the tabs on notes that are gone, and takes them out of the history.
     /// The last tab stays, with nothing open.
     private func closeTabs(on gone: (URL) -> Bool) {
-        for i in tabs.indices {
-            tabs[i].back.removeAll(where: gone)
-            tabs[i].forward.removeAll(where: gone)
-        }
+        backStack.removeAll(where: gone)
+        forwardStack.removeAll(where: gone)
         for tab in tabs where tab.note.map(gone) == true {
             if tabs.count > 1 {
                 closeTab(tab.id)
@@ -439,18 +443,25 @@ final class AppState: ObservableObject {
     func goBack() { step(from: \.backStack, to: \.forwardStack) }
     func goForward() { step(from: \.forwardStack, to: \.backStack) }
 
-    /// Opens the latest note in one list, leaving the open one at the end of the other.
+    /// Goes to the latest note in one list, leaving the open one at the end of the other: to
+    /// its tab, or in the tab you're on if its own was closed.
     private func step(from: ReferenceWritableKeyPath<AppState, [URL]>, to: ReferenceWritableKeyPath<AppState, [URL]>) {
-        // Notes deleted since, and notes open in other tabs, are skipped.
+        // Notes deleted since are skipped.
         while let url = self[keyPath: from].popLast() {
-            guard url != openFile, FileManager.default.fileExists(atPath: url.path),
-                  !tabs.contains(where: { $0.note == url }) else { continue }
+            guard url != openFile, FileManager.default.fileExists(atPath: url.path) else { continue }
             if let open = openFile { self[keyPath: to].append(open) }
             steppingHistory = true
-            openNote(url)
+            if let tab = tabs.first(where: { $0.note == url }) { showTab(tab.id) } else { openNote(url) }
             steppingHistory = false
             return
         }
+    }
+
+    /// Notes the note you've left for another as a step back, unless Back or Forward left it.
+    private func leave(_ note: URL?) {
+        guard !steppingHistory, let note, note != openFile else { return }
+        backStack.append(note)
+        forwardStack = []
     }
 
     /// After a note or folder moves from `old` to `new`, points every link at where its note
@@ -699,11 +710,9 @@ final class AppState: ObservableObject {
     /// Follows a renamed or moved item with the tabs, selection and open folders.
     private func relocate(_ old: URL, to new: URL) {
         let moved = { [self] (url: URL) in rebase(url, from: old, to: new) ?? url }
-        for i in tabs.indices {
-            tabs[i].note = tabs[i].note.map(moved)
-            tabs[i].back = tabs[i].back.map(moved)
-            tabs[i].forward = tabs[i].forward.map(moved)
-        }
+        for i in tabs.indices { tabs[i].note = tabs[i].note.map(moved) }
+        backStack = backStack.map(moved)
+        forwardStack = forwardStack.map(moved)
         if let sel = selection, let moved = rebase(sel, from: old, to: new) { selection = moved }
         expanded = Set(expanded.map { rebase($0, from: old, to: new) ?? $0 })
         recents.relocate { [self] in rebase($0, from: old, to: new) }
@@ -718,11 +727,9 @@ final class AppState: ObservableObject {
         // A note open in another tab is shown there, not opened twice.
         if let tab = tabs.first(where: { $0.note == url }) { return showTab(tab.id, focus: false) }
         flushSave()
-        if !steppingHistory {
-            if let open = openFile { backStack.append(open) }
-            forwardStack = []
-        }
+        let left = openFile
         openFile = url
+        leave(left)
         // Shows where the note lives, as VS Code's explorer does; the sidebar scrolls to it.
         expandAncestors(of: url)
     }
@@ -817,13 +824,10 @@ final class AppState: ObservableObject {
     """
 }
 
-/// A place to write in: a note, and the notes opened there before and after it, for Back and
-/// Forward. Each tab keeps its own, as a browser's do.
+/// A place to write in, with a note open or none.
 struct NoteTab: Identifiable, Equatable {
     let id = UUID()
     var note: URL?
-    var back: [URL] = []
-    var forward: [URL] = []
 }
 
 /// Calls back on the main queue whenever anything under a folder changes.

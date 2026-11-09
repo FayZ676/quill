@@ -139,9 +139,9 @@ struct QuillCommands: Commands {
         CommandGroup(replacing: .printItem) {}
 
         CommandGroup(replacing: .saveItem) {
-            // The last tab closes the window, as in Safari.
-            Button(state.tabs.count > 1 ? "Close Tab" : "Close Window") {
-                if state.tabs.count > 1 {
+            // The last tab is emptied, and once it's empty the window closes, as in VS Code.
+            Button(state.tabs.count > 1 || state.openFile != nil ? "Close Tab" : "Close Window") {
+                if state.tabs.count > 1 || state.openFile != nil {
                     state.closeTab(state.activeTab)
                 } else {
                     NSApp.keyWindow?.performClose(nil)
