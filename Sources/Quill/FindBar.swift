@@ -123,50 +123,60 @@ final class Finder: ObservableObject {
     }
 }
 
-/// The find box over the top right of the page: the search, how many it found, the arrows
-/// and a close button, and a row under it for replacing, opened from the chevron.
+/// The find box over the top right of the page, drawn as Quill's other boxes over the window
+/// are: the search, how many it found, the arrows, the replace toggle and a close button, and
+/// a row under it for replacing. The controls on the right of both rows line up.
 struct FindBar: View {
     @ObservedObject var finder: Finder
     @FocusState private var focus: Finder.Field?
+    private static let controls: CGFloat = 196
 
     var body: some View {
         if finder.shown {
-            HStack(alignment: .top, spacing: 6) {
-                icon(finder.replacing ? "chevron.down" : "chevron.right", help: "Toggle Replace") {
-                    finder.replacing.toggle()
-                    focus = finder.replacing ? .replace : .find
-                }
-                .frame(height: 30)
-                VStack(spacing: 6) {
-                    HStack(spacing: 4) {
-                        field("Find", text: $finder.query, as: .find) {
-                            finder.step(NSApp.currentEvent?.modifierFlags.contains(.shift) == true ? -1 : 1)
-                        }
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    field("Find", text: $finder.query, as: .find) {
+                        finder.step(NSApp.currentEvent?.modifierFlags.contains(.shift) == true ? -1 : 1)
+                    }
+                    HStack(spacing: 0) {
                         Text(count)
-                            .appFont(12)
+                            .appFont(13)
                             .foregroundStyle(finder.query.isEmpty || !finder.matches.isEmpty ? .secondary : Color.red)
-                            .frame(minWidth: 64)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.trailing, 6)
                         icon("chevron.up", help: "Previous Match (\(Shortcuts.findPrevious.label))") { finder.step(-1) }
                             .disabled(finder.matches.isEmpty)
                         icon("chevron.down", help: "Next Match (\(Shortcuts.findNext.label))") { finder.step(1) }
                             .disabled(finder.matches.isEmpty)
+                        icon("arrow.left.arrow.right", help: "Replace (\(Shortcuts.replace.label))", lit: finder.replacing) {
+                            finder.replacing.toggle()
+                            focus = finder.replacing ? .replace : .find
+                        }
                         icon("xmark", help: "Close (⎋)") { finder.hide() }
                     }
-                    if finder.replacing {
-                        HStack(spacing: 4) {
-                            field("Replace", text: $finder.replacement, as: .replace) { finder.replace() }
+                    .frame(width: Self.controls)
+                }
+                if finder.replacing {
+                    Divider()
+                    HStack(spacing: 0) {
+                        field("Replace", text: $finder.replacement, as: .replace) { finder.replace() }
+                        HStack(spacing: 0) {
+                            Spacer()
                             textButton("Replace") { finder.replace() }
                             textButton("All") { finder.replaceAll() }
                         }
+                        .frame(width: Self.controls)
                         .disabled(finder.matches.isEmpty)
                     }
                 }
             }
-            .padding(8)
-            .frame(width: 440)
-            .background(Color(nsColor: Theme.titleBar), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.3)))
-            .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+            .padding(.trailing, 8)
+            .frame(width: 480)
+            .background(Color(nsColor: Theme.background))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3)))
+            .shadow(color: .black.opacity(0.3), radius: 24, y: 8)
             .onExitCommand { finder.hide() }
             .onAppear(perform: takeFocus)
             .onChange(of: finder.focus) { _ in takeFocus() }
@@ -185,25 +195,24 @@ struct FindBar: View {
         finder.focus = nil
     }
 
+    /// As the search panel's field: plain, in the page, set off by the line under it.
     private func field(_ prompt: String, text: Binding<String>, as field: Finder.Field,
                        submit: @escaping () -> Void) -> some View {
         TextField(prompt, text: text)
             .textFieldStyle(.plain)
-            .appFont(14)
+            .appFont(16)
             .focused($focus, equals: field)
             .onSubmit(submit)
-            .padding(.horizontal, 8)
-            .frame(height: 30)
-            .background(Color(nsColor: Theme.background), in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(focus == field ? Color.accentColor : Color.secondary.opacity(0.3)))
+            .padding(14)
     }
 
-    private func icon(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    private func icon(_ symbol: String, help: String, lit: Bool = false,
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 13))
-                .frame(width: 26, height: 30)
+                .foregroundStyle(lit ? Color.accentColor : .secondary)
+                .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -217,7 +226,7 @@ struct FindBar: View {
                 .appFont(13)
                 .foregroundStyle(Color.accentColor)
                 .padding(.horizontal, 8)
-                .frame(height: 30)
+                .frame(height: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
