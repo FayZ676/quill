@@ -177,13 +177,30 @@ private struct DetailBar: View {
 }
 
 /// The tabs open, from the leading edge, sharing the room between them once they fill it,
-/// and a button for another.
+/// and a button for another. Drag a tab along to move it: it follows the pointer, and the
+/// others slide out of its way.
 private struct TabStrip: View {
     @EnvironmentObject var state: AppState
+    /// Where each tab is along the strip.
+    @State private var frames: [NoteTab.ID: CGRect] = [:]
+    /// The tab being dragged, where on it it was taken, and where the pointer is now.
+    @State private var drag: (id: NoteTab.ID, grab: CGFloat, x: CGFloat)?
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(state.tabs) { TabItem(tab: $0) }
+            ForEach(state.tabs) { tab in
+                TabItem(tab: tab)
+                    .background(GeometryReader { geometry in
+                        Color.clear.preference(key: TabFrames.self, value: [tab.id: geometry.frame(in: .named("tabs"))])
+                    })
+                    // Under the pointer, wherever the tabs have moved its place to.
+                    .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
+                    .zIndex(drag?.id == tab.id ? 1 : 0)
+                    // Alongside the tab's clicks, which a drag's first few points don't cancel.
+                    .simultaneousGesture(DragGesture(minimumDistance: 5, coordinateSpace: .named("tabs"))
+                        .onChanged { moved(tab.id, $0) }
+                        .onEnded { _ in withAnimation(.easeOut(duration: 0.15)) { drag = nil } })
+            }
             Button(action: state.newTab) {
                 Image(systemName: "plus")
                     .font(.system(size: 13, weight: .medium))
@@ -193,6 +210,25 @@ private struct TabStrip: View {
             .help("New Tab (\(Shortcuts.newTab.label))")
             Spacer(minLength: 0)
         }
+        .coordinateSpace(name: "tabs")
+        .onPreferenceChange(TabFrames.self) { frames = $0 }
+    }
+
+    /// Follows the pointer with the dragged tab, and moves it to the place of the tab under it.
+    private func moved(_ id: NoteTab.ID, _ value: DragGesture.Value) {
+        if drag == nil {
+            drag = (id, value.startLocation.x - (frames[id]?.minX ?? 0), value.location.x)
+        }
+        drag?.x = value.location.x
+        guard let target = state.tabs.first(where: { $0.id != id && frames[$0.id]?.contains(CGPoint(x: value.location.x, y: frames[$0.id]!.midY)) == true }) else { return }
+        withAnimation(.easeInOut(duration: 0.15)) { state.moveTab(id, to: target.id) }
+    }
+}
+
+private struct TabFrames: PreferenceKey {
+    static var defaultValue: [NoteTab.ID: CGRect] = [:]
+    static func reduce(value: inout [NoteTab.ID: CGRect], nextValue: () -> [NoteTab.ID: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }
 
@@ -247,45 +283,12 @@ private struct TabItem: View {
                 state.hoveredTab = nil
             }
         }
-        // As a tab of Quill's own, not text, so the page and the terminal don't take it in.
-        .onDrag {
-            state.draggedTab = tab.id
-            let provider = NSItemProvider()
-            provider.registerDataRepresentation(forTypeIdentifier: UTType.quillTab.identifier, visibility: .ownProcess) {
-                $0(Data(tab.id.uuidString.utf8), nil)
-                return nil
-            }
-            return provider
-        }
-        .onDrop(of: [.quillTab], delegate: TabDrop(target: tab.id, state: state))
         .contextMenu {
             Button("Close Tab") { state.closeTab(tab.id) }
             Button("Close Other Tabs") {
                 for other in state.tabs where other.id != tab.id { state.closeTab(other.id) }
             }
         }
-    }
-}
-
-private extension UTType {
-    static let quillTab = UTType(exportedAs: "com.faizififita.quill.tab")
-}
-
-/// Slides the dragged tab into the place of the one it's dragged over.
-private struct TabDrop: DropDelegate {
-    let target: NoteTab.ID
-    let state: AppState
-
-    func dropEntered(info: DropInfo) {
-        guard let dragged = state.draggedTab, dragged != target else { return }
-        withAnimation(.easeInOut(duration: 0.15)) { state.moveTab(dragged, to: target) }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-
-    func performDrop(info: DropInfo) -> Bool {
-        state.draggedTab = nil
-        return true
     }
 }
 

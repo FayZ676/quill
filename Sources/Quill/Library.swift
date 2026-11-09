@@ -23,8 +23,6 @@ final class AppState: ObservableObject {
     /// The tab, or the sidebar row, under the pointer: what a middle-click acts on.
     var hoveredTab: NoteTab.ID?
     var hoveredRow: URL?
-    /// The tab being dragged along the tab bar.
-    var draggedTab: NoteTab.ID?
     /// The graph of notes stands in for the editor.
     @Published private(set) var showingGraph = false
     /// The note opening is a step back or forward, not a new place in the history.
