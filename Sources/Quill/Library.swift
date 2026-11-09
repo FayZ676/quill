@@ -613,6 +613,24 @@ final class AppState: ObservableObject {
         return !files.isEmpty
     }
 
+    /// Notes dragged onto the tabs, from the sidebar, each opened in a tab of its own. Folders,
+    /// and files from outside the library, aren't taken.
+    func dropInTabs(_ providers: [NSItemProvider]) -> Bool {
+        let files = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        for provider in files {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async {
+                    let note = URL(fileURLWithPath: url.path, isDirectory: false)
+                    guard !url.hasDirectoryPath, self.isInside(note, self.root),
+                          FileNode.markdownExtensions.contains(note.pathExtension.lowercased()) else { return }
+                    self.openInNewTab(note)
+                }
+            }
+        }
+        return !files.isEmpty
+    }
+
     func trash(_ url: URL) {
         flushSave()
         do { try FileManager.default.trashItem(at: url, resultingItemURL: nil) } catch { return present(error) }

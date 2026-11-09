@@ -212,6 +212,8 @@ private struct TabStrip: View {
     @State private var frames: [NoteTab.ID: CGRect] = [:]
     /// The tab being dragged, where on it it was taken, and where the pointer is now.
     @State private var drag: (id: NoteTab.ID, grab: CGFloat, x: CGFloat)?
+    /// A note from the sidebar is held over the tabs.
+    @State private var dropping = false
 
     var body: some View {
         // The one tab left with no note in it isn't shown: with nothing open, there are no tabs.
@@ -248,6 +250,11 @@ private struct TabStrip: View {
         }
         .coordinateSpace(name: "tabs")
         .onPreferenceChange(TabFrames.self) { frames = $0 }
+        // A note dragged here from the sidebar opens in a new tab, anywhere along the tabs.
+        .contentShape(Rectangle())
+        .onDrop(of: [.fileURL], isTargeted: $dropping) { state.dropInTabs($0) }
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(Color.secondary.opacity(dropping ? 0.08 : 0)))
     }
 
     /// Follows the pointer with the dragged tab, and moves it to the place of the tab under it.
