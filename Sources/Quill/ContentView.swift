@@ -300,20 +300,25 @@ private struct ActivityStrip: View {
     @ObservedObject var chrome: ChromeFader
 
     var body: some View {
-        VStack(spacing: 6) {
-            panel(.explorer, symbol: "doc.on.doc", help: "Explorer (\(Shortcuts.explorer.label))")
-            panel(.search, symbol: "magnifyingglass", help: "Search (\(Shortcuts.search.label))")
-            icon("point.3.connected.trianglepath.dotted", lit: state.showingGraph,
-                 help: "\(state.showingGraph ? "Hide" : "Show") Graph (\(Shortcuts.graph.label))",
-                 action: state.toggleGraph)
-            Spacer()
+        VStack(spacing: 0) {
+            // Under Quill's bar, which runs over the strip and the sidebar as one, as VS
+            // Code's activity bar sits under its title bar.
+            Color.clear.frame(height: 48)
+            BarDivider(chrome: chrome)
+            VStack(spacing: 6) {
+                panel(.explorer, symbol: "doc.on.doc", help: "Explorer (\(Shortcuts.explorer.label))")
+                panel(.search, symbol: "magnifyingglass", help: "Search (\(Shortcuts.search.label))")
+                icon("point.3.connected.trianglepath.dotted", lit: state.showingGraph,
+                     help: "\(state.showingGraph ? "Hide" : "Show") Graph (\(Shortcuts.graph.label))",
+                     action: state.toggleGraph)
+                Spacer()
+            }
+            .padding(.top, 8)
+            .frame(maxHeight: .infinity)
+            .overlay(alignment: .trailing) { HStack(spacing: 0) { Divider() } }
         }
-        // The first icon level with the buttons in Quill's bar.
-        .padding(.top, 6)
         .frame(width: 48)
-        .frame(maxHeight: .infinity)
         .background(Color(nsColor: Theme.background))
-        .overlay(alignment: .trailing) { HStack(spacing: 0) { Divider() } }
         .contentShape(Rectangle())
         .onHover { state.hover(.strip, $0) }
         .modifier(FadesWithChrome(chrome: chrome))
