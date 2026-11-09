@@ -187,8 +187,10 @@ private struct TabStrip: View {
     @State private var drag: (id: NoteTab.ID, grab: CGFloat, x: CGFloat)?
 
     var body: some View {
+        // The one tab left with no note in it isn't shown: with nothing open, there are no tabs.
+        let shown = state.tabs.count == 1 && state.tabs[0].note == nil ? [] : state.tabs
         HStack(spacing: 4) {
-            ForEach(state.tabs) { tab in
+            ForEach(shown) { tab in
                 TabItem(tab: tab, dragging: drag != nil)
                     // Under the pointer, wherever the tabs have moved its place to.
                     .offset(x: drag.flatMap { $0.id == tab.id ? $0.x - $0.grab - (frames[tab.id]?.minX ?? 0) : nil } ?? 0)
@@ -278,8 +280,7 @@ private struct TabItem: View {
         // Solid under the tint, the bar's own color, so a tab dragged over another hides it.
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: Theme.background)))
         .overlay(alignment: .trailing) {
-            // Nothing to close on the one tab left with no note in it.
-            if hovering && !dragging && (state.tabs.count > 1 || tab.note != nil) {
+            if hovering && !dragging {
                 Button { state.closeTab(tab.id) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))

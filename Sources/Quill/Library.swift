@@ -345,8 +345,10 @@ final class AppState: ObservableObject {
         showTab(tab.id)
     }
 
-    /// An empty tab after the one you're on, with Go To open to pick its note.
+    /// An empty tab after the one you're on, with Go To open to pick its note. On an empty
+    /// tab already, Go To opens for that one.
     func newTab() {
+        guard openFile != nil else { return goingTo = true }
         let tab = NoteTab()
         tabs.insert(tab, at: active + 1)
         showTab(tab.id, focus: false)
