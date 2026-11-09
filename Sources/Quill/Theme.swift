@@ -28,6 +28,9 @@ enum Theme {
     static let accent = NSColor.controlAccentColor
     static let selection = dynamic(light: accent.withAlphaComponent(0.28),
                                     dark: accent.withAlphaComponent(0.45))
+    /// What find turned up on the page, and brighter, the match it's on.
+    static let match = dynamic(light: accent.withAlphaComponent(0.18), dark: accent.withAlphaComponent(0.25))
+    static let currentMatch = dynamic(light: accent.withAlphaComponent(0.45), dark: accent.withAlphaComponent(0.6))
 }
 
 extension Appearance {

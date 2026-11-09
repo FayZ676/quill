@@ -314,13 +314,14 @@ final class FocusTextView: NSTextView {
         chooseSuggestion()
     }
 
+    /// Puts away the find bar, if it's open; says whether it was.
+    var closeFind: () -> Bool = { false }
+
     /// Escape. Puts away the link suggestions, or else the find bar, as VS Code does.
     override func cancelOperation(_ sender: Any?) {
         guard suggester.isShowing else {
-            guard enclosingScrollView?.isFindBarVisible == true else { return super.cancelOperation(sender) }
-            let item = NSMenuItem()
-            item.tag = NSTextFinder.Action.hideFindInterface.rawValue
-            return performFindPanelAction(item)
+            if !closeFind() { super.cancelOperation(sender) }
+            return
         }
         suggester.dismiss()
         showSuggestions()

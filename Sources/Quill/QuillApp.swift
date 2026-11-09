@@ -78,15 +78,6 @@ struct QuillCommands: Commands {
         }
     }
 
-    /// Searches the open note with the find bar over the page, from wherever you are.
-    private func find(_ action: NSTextFinder.Action) {
-        guard let tv = state.textView else { return }
-        state.focusEditor()
-        let item = NSMenuItem()
-        item.tag = action.rawValue
-        tv.performFindPanelAction(item)
-    }
-
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New File") { state.newFile() }
@@ -117,18 +108,18 @@ struct QuillCommands: Commands {
         CommandGroup(after: .pasteboard) {
             Divider()
             Menu("Find") {
-                Button("Find…") { find(.showFindInterface) }
+                Button("Find…") { state.finder.show(replacing: false) }
                     .keyboardShortcut(Shortcuts.find)
-                Button("Find and Replace…") { find(.showReplaceInterface) }
+                Button("Find and Replace…") { state.finder.show(replacing: true) }
                     .keyboardShortcut(Shortcuts.replace)
-                Button("Find Next") { find(.nextMatch) }
+                Button("Find Next") { state.finder.step(1) }
                     .keyboardShortcut(Shortcuts.findNext)
-                Button("Find Previous") { find(.previousMatch) }
+                Button("Find Previous") { state.finder.step(-1) }
                     .keyboardShortcut(Shortcuts.findPrevious)
-                Button("Use Selection for Find") { find(.setSearchString) }
+                Button("Use Selection for Find") { state.finder.useSelection() }
                     .keyboardShortcut(Shortcuts.useSelection)
             }
-            .disabled(state.textView == nil)
+            .disabled(state.openFile == nil || state.showingGraph)
         }
 
         CommandMenu("Format") {

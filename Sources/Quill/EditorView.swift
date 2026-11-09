@@ -20,8 +20,6 @@ struct EditorView: NSViewRepresentable {
         tv.isRichText = false
         tv.importsGraphics = false
         tv.allowsUndo = true
-        tv.usesFindBar = true
-        tv.isIncrementalSearchingEnabled = true
         tv.textInput = state.textInput
         tv.drawsBackground = true
         tv.backgroundColor = Theme.background
@@ -58,13 +56,12 @@ struct EditorView: NSViewRepresentable {
 
 /// Clicks anywhere on the page reach the text, not just those on the text column itself:
 /// the margins, the space below the last line, and whatever the clip view shows around
-/// the text view. Only the scroller and the find bar keep their own clicks.
+/// the text view. Only the scroller keeps its own clicks.
 final class PageScrollView: NSScrollView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
         guard let tv = documentView as? NSTextView, tv.isEditable,
-              !hit.isDescendant(of: verticalScroller ?? hit), !(hit is NSScroller),
-              !hit.isDescendant(of: findBarView ?? hit) else { return hit }
+              !hit.isDescendant(of: verticalScroller ?? hit), !(hit is NSScroller) else { return hit }
         return hit.isDescendant(of: tv) ? hit : tv
     }
 }
@@ -103,6 +100,12 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         highlighter.linkExists = { [weak self] in self?.state.links.exists($0, from: self?.url) ?? true }
         state.showPendingHeading = { [weak self] in self?.showPendingHeading() }
         state.reloadEditor = { [weak self] in self?.reload($0) }
+        state.finder.textView = tv
+        tv.closeFind = { [weak self] in
+            guard let finder = self?.state.finder, finder.shown else { return false }
+            finder.hide()
+            return true
+        }
     }
 
     func sync() {
@@ -181,6 +184,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
                                           : NSRange(location: 0, length: 0))
         if !keepSelection { tv.scroll(.zero) }
         state.stats.update(text)
+        state.finder.search()
         tv.updateFocus()
         tv.centerCaret(animated: false)
     }
@@ -222,6 +226,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         pendingSave = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75, execute: work)
         textView?.updateSuggestions()
+        state.finder.search()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {

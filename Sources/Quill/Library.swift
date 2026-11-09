@@ -66,6 +66,8 @@ final class AppState: ObservableObject {
 
     /// Kept separate so per-keystroke word counts don't re-render the sidebar.
     let stats = Stats()
+    /// Find and replace in the open note.
+    let finder = Finder()
     let chrome = ChromeFader()
     private var recents: Recents
     weak var textView: FocusTextView?

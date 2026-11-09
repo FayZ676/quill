@@ -46,6 +46,11 @@ struct ContentView: View {
                         }
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if !state.showingGraph {
+                        FindBar(finder: state.finder).padding(12)
+                    }
+                }
                 .background(GeometryReader { geometry in
                     Color.clear
                         .onAppear { page = geometry.frame(in: .global) }
