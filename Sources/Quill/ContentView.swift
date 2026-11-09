@@ -258,7 +258,9 @@ private struct SidebarEdge: View {
     @State private var dragStart: Double?
 
     var body: some View {
-        Divider()
+        // In a row, so the line stands upright: over the page, out of the window's row, a
+        // divider lies across.
+        HStack(spacing: 0) { Divider() }
             .overlay {
                 Color.clear
                     .frame(width: 8)
@@ -311,7 +313,7 @@ private struct ActivityStrip: View {
         .frame(width: 48)
         .frame(maxHeight: .infinity)
         .background(Color(nsColor: Theme.background))
-        .overlay(alignment: .trailing) { Divider() }
+        .overlay(alignment: .trailing) { HStack(spacing: 0) { Divider() } }
         .contentShape(Rectangle())
         .onHover { state.hover(.strip, $0) }
         .modifier(FadesWithChrome(chrome: chrome))
