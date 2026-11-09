@@ -344,8 +344,9 @@ private struct PanelHeader: View {
                 Spacer()
                 // Go To has no button: its magnifying glass would read as Search's, in the
                 // strip beside it. It's ⌘P and in the File menu.
-                new("doc.badge.plus", help: "New File (\(Shortcuts.newFile.label))") { state.newFile() }
-                new("folder.badge.plus", help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
+                // VS Code's icons for these, as the strip follows its activity bar.
+                new(.newFile, help: "New File (\(Shortcuts.newFile.label))") { state.newFile() }
+                new(.newFolder, help: "New Folder (\(Shortcuts.newFolder.label))") { state.newFolder() }
             case .search:
                 Text("Search")
                     .appFont(13, bold: true)
@@ -356,9 +357,11 @@ private struct PanelHeader: View {
         .frame(minHeight: 30)
     }
 
-    private func new(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    private func new(_ icon: Codicon, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).toolbarIcon(width: 30)
+            icon.fill(style: FillStyle(eoFill: true))
+                .frame(width: 20, height: 20)
+                .frame(minWidth: 30, minHeight: 30)
         }
         .buttonStyle(.bare)
         .help(help)
