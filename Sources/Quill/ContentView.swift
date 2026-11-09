@@ -1037,13 +1037,6 @@ private struct StatusBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if state.openFile != nil, !state.showingGraph {
-                let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
-                Text("\(stats.words) words · \(minutes) min read")
-                    .appFont(12)
-                    .foregroundStyle(.tertiary)
-                    .allowsHitTesting(false)
-            }
             Spacer()
             // Moved down from the top bar, which is the tabs'.
             if !state.showingGraph { FocusToggle() }
@@ -1053,6 +1046,16 @@ private struct StatusBar: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 26)
+        // Centered under the page, whatever the buttons beside it.
+        .overlay {
+            if state.openFile != nil, !state.showingGraph {
+                let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
+                Text("\(stats.words) words · \(minutes) min read")
+                    .appFont(12)
+                    .foregroundStyle(.tertiary)
+                    .allowsHitTesting(false)
+            }
+        }
         .background(Color(nsColor: Theme.background))
         .modifier(FadesWithChrome(chrome: chrome))
     }
