@@ -10,8 +10,20 @@ final class FocusTextView: NSTextView {
     var typewriter = false {
         didSet {
             guard typewriter != oldValue else { return }
+            // Taken before the layout, as the page growing shorter can pull the scroll back.
+            let top = textContainerOrigin.y
+            let scrolled = enclosingScrollView?.contentView.bounds.origin.y ?? 0
             updateLayout()
-            centerCaret(animated: false)
+            if typewriter { return centerCaret(animated: false) }
+            // The half screen above the text goes, and the text with the caret would jump up
+            // by as much: scrolled by the same, it stays where it is.
+            guard let scroll = enclosingScrollView else { return }
+            let clip = scroll.contentView
+            let maxY = max(0, frame.height - clip.bounds.height)
+            let y = min(maxY, max(0, scrolled + textContainerOrigin.y - top))
+            clip.setBoundsOrigin(NSPoint(x: clip.bounds.origin.x, y: y))
+            scroll.reflectScrolledClipView(clip)
+            placeCaret()
         }
     }
 
