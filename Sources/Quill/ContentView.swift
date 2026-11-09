@@ -119,17 +119,13 @@ struct ContentView: View {
             TerminalPane()
             // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
             // runs the full width only when the sidebar is away.
-            BarDivider(chrome: state.chrome)
             StatusBar(stats: state.stats, chrome: state.chrome)
         }
         // Gives way to the sidebar rather than pushing it off the window.
         .frame(minWidth: 0, maxWidth: .infinity)
         .ignoresSafeArea(.container, edges: .bottom)
         .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                DetailBar().modifier(TitleBar(chrome: state.chrome))
-                BarDivider(chrome: state.chrome)
-            }
+            DetailBar().modifier(TitleBar(chrome: state.chrome, boxed: true))
         }
     }
 
@@ -139,7 +135,7 @@ struct ContentView: View {
         // Stacked rather than inset: the list scrolls under an inset and its top rows
         // would be stuck there.
         return VStack(spacing: 0) {
-            // No line under it, unlike the page's bar: its controls are the panel's own.
+            // In the sidebar's box rather than one of its own: its controls are the panel's.
             PanelHeader().modifier(TitleBar(chrome: state.chrome))
                 // Over the space the list leaves above its first row, so the rows sit close
                 // under the buttons, which stay level with the page's bar. Rows scrolled up
@@ -151,7 +147,7 @@ struct ContentView: View {
             case .search: NoteSearchView(search: state.noteSearch)
             }
         }
-        .background(Color(nsColor: Theme.background))
+        .modifier(Boxed())
         .background(SidebarAnchor())
         .overlay(alignment: .trailing) { SidebarEdge(width: $sidebarWidth) }
         // Laid out at its full width and uncovered as it slides, so the list isn't laid
@@ -313,13 +309,35 @@ private struct TabItem: View {
 /// at the top of the screen in full screen.
 private struct TitleBar: ViewModifier {
     @ObservedObject var chrome: ChromeFader
+    /// In a box of its own, as the page's bar is; the sidebar's sits in the sidebar's box.
+    var boxed = false
 
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 14)
             .frame(height: 48)
             .background(Color(nsColor: Theme.background))
+            .modifier(Boxed(on: boxed))
             .modifier(FadesWithChrome(chrome: chrome))
+    }
+}
+
+/// A part of the window in a box of its own, as VS Code draws its bars: a rounded border all
+/// the way round, set in from the parts beside it so no two touch.
+struct Boxed: ViewModifier {
+    var on = true
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if on {
+            let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+            content
+                .background(Color(nsColor: Theme.background))
+                .clipShape(shape)
+                .overlay(shape.strokeBorder(Color(nsColor: .separatorColor)))
+                .padding(4)
+        } else {
+            content
+        }
     }
 }
 
@@ -372,17 +390,15 @@ private extension EnvironmentValues {
     }
 }
 
-/// The sidebar's right edge: a line, and a handle a little wider than it that resizes the
-/// sidebar.
+/// The sidebar's right edge, which its box draws: a handle over it that resizes the sidebar.
 private struct SidebarEdge: View {
     @Binding var width: Double
     /// The width when the drag began.
     @State private var dragStart: Double?
 
     var body: some View {
-        // In a row, so the line stands upright: over the page, out of the window's row, a
-        // divider lies across.
-        HStack(spacing: 0) { Divider() }
+        Color.clear
+            .frame(width: 1)
             .overlay {
                 Color.clear
                     .frame(width: 8)
@@ -399,17 +415,6 @@ private struct SidebarEdge: View {
                         }
                         .onEnded { _ in dragStart = nil })
             }
-    }
-}
-
-/// The line under the top bar, like the one beside the sidebar. Goes with the bar while you write.
-private struct BarDivider: View {
-    @ObservedObject var chrome: ChromeFader
-
-    var body: some View {
-        Divider()
-            .opacity(chrome.hidden ? 0 : 1)
-            .animation(.easeInOut(duration: chrome.hidden ? 0.5 : 0.2), value: chrome.hidden)
     }
 }
 
@@ -433,8 +438,7 @@ private struct ActivityStrip: View {
         .padding(.top, 6)
         .frame(width: 48)
         .frame(maxHeight: .infinity)
-        .background(Color(nsColor: Theme.background))
-        .overlay(alignment: .trailing) { HStack(spacing: 0) { Divider() } }
+        .modifier(Boxed())
         .modifier(FadesWithChrome(chrome: chrome))
     }
 
@@ -1069,6 +1073,7 @@ private struct StatusBar: View {
             }
         }
         .background(Color(nsColor: Theme.background))
+        .modifier(Boxed())
         .modifier(FadesWithChrome(chrome: chrome))
     }
 }
