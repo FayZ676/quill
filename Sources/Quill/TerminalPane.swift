@@ -20,7 +20,8 @@ struct TerminalPane: View {
     var body: some View {
         let place = note ?? state.root
         VStack(spacing: 0) {
-            Divider().overlay { resizeHandle }
+            // The top of the box it shares with the bar at the bottom, which draws the line.
+            Color.clear.frame(height: 1).overlay { resizeHandle }
             HStack(spacing: 8) {
                 if shells.installed.count > 1 {
                     AgentSwitch(agents: shells.installed, running: shells.agents[place]) { agent in
@@ -44,6 +45,9 @@ struct TerminalPane: View {
                 .padding(.leading, 14)
                 .padding(.trailing, 4)
                 .padding(.bottom, 8)
+            // Parts it from the bar's controls under it, set in from the box's sides, as the
+            // line between the strip and the sidebar is set in from its ends.
+            Divider().padding(.horizontal, 14)
         }
         .background(Color(nsColor: Theme.background))
         // Laid out at its full height and uncovered as it slides, so the shell isn't told
@@ -54,7 +58,7 @@ struct TerminalPane: View {
         .onAppear { state.mentionInTerminal = { [shells] in shells.mention($0) } }
     }
 
-    /// A strip a little taller than the line above the pane; drag it to resize the pane.
+    /// A strip along the top of the pane's box; drag it to resize the pane.
     private var resizeHandle: some View {
         Color.clear
             .frame(height: 8)

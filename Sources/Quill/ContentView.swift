@@ -138,11 +138,24 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
             .padding(Boxed.inset)
-            // Always there, if folded away, so its shells keep running while it's closed.
-            TerminalPane()
-            // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
-            // runs the full width only when the sidebar is away.
-            StatusBar(stats: state.stats, chrome: state.chrome)
+            // The bar at the bottom's box, which takes in the terminal as it opens rather than
+            // the terminal having one of its own, as the strip's takes in the sidebar.
+            VStack(spacing: 0) {
+                // Always there, if folded away, so its shells keep running while it's closed.
+                TerminalPane()
+                // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
+                // runs the full width only when the sidebar is away.
+                StatusBar(stats: state.stats, chrome: state.chrome)
+            }
+            .background(Color(nsColor: Theme.background))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor))
+                    .modifier(FadesWithChrome(chrome: state.chrome))
+                    .allowsHitTesting(false)
+            }
+            .padding(Boxed.inset)
         }
         // Gives way to the sidebar rather than pushing it off the window.
         .frame(minWidth: 0, maxWidth: .infinity)
@@ -1121,7 +1134,6 @@ private struct StatusBar: View {
             }
         }
         .background(Color(nsColor: Theme.background))
-        .modifier(Boxed())
         .modifier(FadesWithChrome(chrome: chrome))
     }
 }
