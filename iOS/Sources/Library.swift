@@ -1,16 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// One screen on the navigation stack: a folder, a document or the graph. A reference type,
-/// so a rename can move it to its new URL without the stack rebuilding the screen.
+/// One screen on the navigation stack: a folder or a document. A reference type, so a
+/// rename can move it to its new URL without the stack rebuilding the screen.
 final class Page: ObservableObject, Hashable {
     @Published var url: URL
-    /// The graph of the library at `url`.
-    let isGraph: Bool
 
-    init(_ url: URL, isGraph: Bool = false) {
+    init(_ url: URL) {
         self.url = url
-        self.isGraph = isGraph
     }
 
     static func == (a: Page, b: Page) -> Bool { a === b }
@@ -33,7 +30,6 @@ final class AppState: ObservableObject {
     /// Files iCloud hasn't brought to the device yet.
     @Published private(set) var syncStates: [URL: SyncState] = [:]
     @Published var pages: [Page] = [] { didSet { rememberLocation() } }
-    @Published private(set) var graph = LinkGraph()
 
     @Published var focusEnabled: Bool { didSet { defaults.set(focusEnabled, forKey: "focusEnabled") } }
     @Published var focusStyle: FocusStyle { didSet { defaults.set(focusStyle.rawValue, forKey: "focusStyle") } }
@@ -75,8 +71,6 @@ final class AppState: ObservableObject {
     private var scanning = false
     /// Another scan was asked for while one ran.
     private var rescan = false
-    /// Counts graph builds, so a slow one can't land after a newer one.
-    private var graphBuild = 0
 
     private init() {
         focusEnabled = defaults.bool(forKey: "focusEnabled")
@@ -182,7 +176,6 @@ final class AppState: ObservableObject {
             recheck = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
         }
-        rebuildGraph()
     }
 
     /// Each folder's contents, by its URL.
@@ -196,25 +189,6 @@ final class AppState: ObservableObject {
         }
         index(tree)
         return map
-    }
-
-    func showGraph() {
-        flushSave()
-        pages.append(Page(root, isGraph: true))
-        rebuildGraph()
-    }
-
-    private func rebuildGraph() {
-        guard pages.contains(where: \.isGraph) else { return }
-        graphBuild += 1
-        let build = graphBuild, links = links
-        DispatchQueue.global(qos: .userInitiated).async {
-            let fresh = LinkGraph.build(links)
-            DispatchQueue.main.async { [weak self] in
-                guard let self, build == self.graphBuild, fresh != self.graph else { return }
-                self.graph = fresh
-            }
-        }
     }
 
     /// Makes a folder picked in Files (e.g. the Mac library in iCloud Drive) the library.
@@ -432,7 +406,7 @@ final class AppState: ObservableObject {
 
     private func rememberLocation() {
         defaults.set(pages.last?.url.path, forKey: "lastLocation")
-        if let page = pages.last, !page.isGraph, !page.url.hasDirectoryPath { recents.viewed(page.url) }
+        if let page = pages.last, !page.url.hasDirectoryPath { recents.viewed(page.url) }
     }
 
     /// Reopens the folder or document Quill was showing, with the folders above it.
@@ -457,7 +431,7 @@ final class AppState: ObservableObject {
         }) {
             pages.removeSubrange(i...)
         }
-        if let first = pages.first, !first.isGraph, !isInside(first.url, root) { pages = [] }
+        if let first = pages.first, !isInside(first.url, root) { pages = [] }
         recents.relocate { [self] in rebase($0, from: old, to: new) }
         rememberLocation()
     }

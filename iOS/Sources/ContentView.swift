@@ -58,9 +58,7 @@ private struct PageView: View {
     @ObservedObject var page: Page
 
     var body: some View {
-        if page.isGraph {
-            GraphScreen()
-        } else if page.url.hasDirectoryPath {
+        if page.url.hasDirectoryPath {
             FolderView(url: page.url, isLibrary: false)
         } else {
             EditorScreen(page: page)
@@ -90,9 +88,6 @@ private struct FolderView: View {
                     BarButton("Back", "chevron.left") { state.goBack() }
                 }
             } trailing: {
-                if isLibrary {
-                    BarButton("Graph", "point.3.connected.trianglepath.dotted") { state.showGraph() }
-                }
                 BarButton("Go To", "magnifyingglass") { goingTo = true }
                 Menu {
                     Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: url) }
@@ -407,29 +402,6 @@ private struct KeepBarWhileSearching: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-// MARK: Graph
-
-/// The library's notes and the links between them; tap a note to open it over the graph.
-private struct GraphScreen: View {
-    @EnvironmentObject var state: AppState
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Header(title: "Graph") {
-                BarButton("Back", "chevron.left") { state.goBack() }
-            } trailing: {
-                EmptyView()
-            }
-            .modifier(Boxed())
-            GraphView(graph: state.graph, current: nil) { state.pages.append(Page($0)) }
-        }
-        .background(Color(uiColor: Theme.background).ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        // Back from a note, it may link elsewhere now.
-        .onAppear { state.reloadTree() }
     }
 }
 
