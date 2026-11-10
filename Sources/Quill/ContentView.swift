@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var state: AppState
+    @ObservedObject private var bridge = ClaudeBridge.shared
     @State private var sidebarShownForRename = false
     @AppStorage("sidebarWidth") private var sidebarWidth = 240.0
     /// The height of the window buttons' strip above Quill's bar; none in full screen.
@@ -117,7 +118,12 @@ struct ContentView: View {
                         EmptyEditor()
                     }
                 }
+                if let change = bridge.changes.first {
+                    ChangeReview(change: change, more: bridge.changes.count - 1)
+                }
             }
+            // What Claude proposes is made against the file on disk: your typing goes there first.
+            .onChange(of: bridge.changes.first?.id) { _ in state.flushSave() }
             .overlay(alignment: .topTrailing) {
                 if !state.showingGraph {
                     FindBar(finder: state.finder).padding(12)

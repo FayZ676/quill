@@ -10,7 +10,7 @@ Quill doesn't collect, store or share any of your data.
 
 **No tracking.** Quill has no accounts, no analytics, no ads and no third-party code. It makes no network requests of its own.
 
-**The terminal.** Quill's terminal runs your own shell, and the programs you start in it (an AI tool, say) do whatever they do under their own terms. Quill doesn't see or send what passes through it.
+**The terminal.** Quill's terminal runs your own shell, and the programs you start in it (an AI tool, say) do whatever they do under their own terms. Quill doesn't see or send what passes through it. So that Claude Code can see what you've selected and show you its changes on the page, Quill lets it connect to Quill on your Mac alone, behind a key only it is given; nothing of this leaves your Mac.
 
 **Children.** Quill collects no information from anyone, including children.
 

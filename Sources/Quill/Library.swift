@@ -98,6 +98,9 @@ final class AppState: ObservableObject {
     /// Installed by the editor; rereads the open note, now at the given URL, after Quill
     /// has rewritten it.
     var reloadEditor: (URL) -> Void = { _ in }
+    /// Installed by the editor; takes in what another program (an agent in the terminal, say)
+    /// wrote to the open note, unless there's typing of yours still to save.
+    var takeDiskChanges: () -> Void = {}
     private var watcher: FolderWatcher?
     private var recheck: DispatchWorkItem?
     private static let scanQueue = DispatchQueue(label: "Quill.scan", qos: .userInitiated)
@@ -772,7 +775,10 @@ final class AppState: ObservableObject {
     }
 
     private func startWatching() {
-        watcher = FolderWatcher(url: root) { [weak self] in self?.reloadTree() }
+        watcher = FolderWatcher(url: root) { [weak self] in
+            self?.reloadTree()
+            self?.takeDiskChanges()
+        }
     }
 
     private func isInside(_ url: URL, _ dir: URL) -> Bool {

@@ -117,6 +117,11 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         highlighter.linkExists = { [weak self] in self?.state.links.exists($0, from: self?.url) ?? true }
         state.showPendingHeading = { [weak self] in self?.showPendingHeading() }
         state.reloadEditor = { [weak self] in self?.reload($0) }
+        state.takeDiskChanges = { [weak self] in self?.takeDiskChanges() }
+        ClaudeBridge.shared.selection = { [weak self, weak tv] in
+            guard let url = self?.url, let tv else { return nil }
+            return (url, tv.string, tv.selectedRange())
+        }
         state.finder.textView = tv
         tv.closeFind = { [weak self] in
             guard let finder = self?.state.finder, finder.shown else { return false }
@@ -151,6 +156,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         }
         show(state.activeTab)
         open(state.openFile)
+        ClaudeBridge.shared.selectionChanged()
     }
 
     /// Parks the tab going behind with its text, undo history, caret and scroll, and brings
@@ -283,7 +289,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     }
 
     /// Picks up edits made by other apps while Quill was in the background.
-    @objc private func appBecameActive() {
+    @objc private func appBecameActive() { takeDiskChanges() }
+
+    private func takeDiskChanges() {
         guard !dirty, let url, let tv = textView,
               let date = modificationDate(url), date != diskDate,
               let text = read(url) else { return }
@@ -307,7 +315,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     func textViewDidChangeSelection(_ notification: Notification) {
         textView?.updateFocus()
         textView?.centerCaret()
-        textView?.updateSuggestions()    }
+        textView?.updateSuggestions()
+        ClaudeBridge.shared.selectionChanged()
+    }
 
     func undoManager(for view: NSTextView) -> UndoManager? { undo }
 

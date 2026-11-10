@@ -230,7 +230,10 @@ private final class Shells: NSObject, ObservableObject, LocalProcessTerminalView
             self?.installed = installed
             self?.agents[place] = started
         }
-        terminal.start(in: file?.deletingLastPathComponent() ?? root, file: file, root: root, agent: agent)
+        // Once Claude Code has the way to Quill, for your selection and its changes.
+        ClaudeBridge.shared.start(library: root) { [weak terminal] port in
+            terminal?.start(in: file?.deletingLastPathComponent() ?? root, file: file, root: root, agent: agent, ide: port)
+        }
         terminals[place] = terminal
         return terminal
     }
@@ -253,7 +256,8 @@ private final class Shells: NSObject, ObservableObject, LocalProcessTerminalView
     func restart(_ place: URL) {
         guard let old = terminals.removeValue(forKey: place) else { return }
         old.processDelegate = nil
-        kill(old.process.shellPid, SIGHUP)
+        // Not yet started, while Quill opens the way for Claude Code: 0 would be Quill's own group.
+        if old.process.shellPid > 0 { kill(old.process.shellPid, SIGHUP) }
         old.terminate()
         agents[place] = nil
     }
@@ -303,7 +307,7 @@ private final class QuillTerminal: LocalProcessTerminalView {
     /// Starts your login shell, so it has the PATH and settings it has in Terminal. It gets
     /// the session's basics rather than all of Quill's environment, which can carry
     /// whatever launched Quill (another terminal, say) into the shell.
-    func start(in dir: URL, file: URL?, root: URL, agent: TerminalAgent) {
+    func start(in dir: URL, file: URL?, root: URL, agent: TerminalAgent, ide port: UInt16?) {
         self.dir = dir
         let inherited = ProcessInfo.processInfo.environment
         let shell = inherited["SHELL"] ?? "/bin/zsh"
@@ -321,6 +325,11 @@ private final class QuillTerminal: LocalProcessTerminalView {
         env["QUILL_FILE"] = file?.path
         env["QUILL_START"] = "1"
         env["QUILL_AGENT"] = agent.command ?? ""
+        // Claude Code connects to Quill as to VS Code (see `ClaudeBridge`).
+        if let port {
+            env["CLAUDE_CODE_SSE_PORT"] = String(port)
+            env["ENABLE_IDE_INTEGRATION"] = "true"
+        }
         if (shell as NSString).lastPathComponent == "zsh", let zdotdir = ZshIntegration.install() {
             env["QUILL_USER_ZDOTDIR"] = inherited["ZDOTDIR"] ?? inherited["HOME"] ?? NSHomeDirectory()
             env["ZDOTDIR"] = zdotdir.path
