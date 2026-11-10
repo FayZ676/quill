@@ -104,9 +104,7 @@ private struct FolderView: View {
             }
             .modifier(Boxed())
             list(nodes)
-                .modifier(Boxed())
         }
-        .padding(Boxed.inset)
         .background(Color(uiColor: Theme.background).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingSettings) { SettingsView() }
@@ -425,9 +423,7 @@ private struct GraphScreen: View {
             }
             .modifier(Boxed())
             GraphView(graph: state.graph, current: nil) { state.pages.append(Page($0)) }
-                .modifier(Boxed())
         }
-        .padding(Boxed.inset)
         .background(Color(uiColor: Theme.background).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         // Back from a note, it may link elsewhere now.
@@ -473,10 +469,7 @@ private struct EditorScreen: View {
                         }
                     }
                 }
-                // Its border fades with the header while you write, leaving only the page.
-                .modifier(Boxed(borderHidden: chrome.hidden))
         }
-        .padding(Boxed.inset)
         .background(Color(uiColor: Theme.background).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -586,13 +579,9 @@ private struct Header<Leading: View, Trailing: View>: View {
     }
 }
 
-/// A rounded, bordered box on the page color, as each part of the Mac app's window sits in:
-/// the bar at the top in one, and the list, graph or page under it in another.
+/// A rounded, bordered box on the page color, as the Mac app's bars sit in, for the bar at
+/// the top of a screen. What's under it runs to the screen's edges, as before.
 private struct Boxed: ViewModifier {
-    var borderHidden = false
-    /// Half the room between two boxes, which each take this much round them.
-    static let inset: CGFloat = 2
-
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         content
@@ -600,10 +589,9 @@ private struct Boxed: ViewModifier {
             .clipShape(shape)
             .overlay {
                 shape.strokeBorder(Color(uiColor: .separator))
-                    .opacity(borderHidden ? 0 : 1)
                     .allowsHitTesting(false)
             }
-            .padding(Self.inset)
+            .padding(4)
     }
 }
 
