@@ -86,11 +86,13 @@ private struct FolderView: View {
                    titleAction: isLibrary ? nil : { state.beginRename(url) }) {
                 if isLibrary {
                     BarButton("Settings", "gearshape") { showingSettings = true }
-                    BarButton("Graph", "point.3.connected.trianglepath.dotted") { state.showGraph() }
                 } else {
                     BarButton("Back", "chevron.left") { state.goBack() }
                 }
             } trailing: {
+                if isLibrary {
+                    BarButton("Graph", "point.3.connected.trianglepath.dotted") { state.showGraph() }
+                }
                 BarButton("Go To", "magnifyingglass") { goingTo = true }
                 Menu {
                     Button("New Document", systemImage: "square.and.pencil") { state.newFile(in: url) }
