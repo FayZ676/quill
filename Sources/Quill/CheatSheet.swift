@@ -113,8 +113,6 @@ struct CheatSheetButton: View {
         }
         .buttonStyle(.bare)
         .help("Cheat Sheet (\(Shortcuts.cheatSheet.label))")
-        // Back to writing once the sheet is put away.
-        .onChange(of: state.showingCheatSheet) { if !$0 { state.focusEditor() } }
     }
 }
 

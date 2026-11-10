@@ -47,7 +47,7 @@ struct TerminalPane: View {
                 .padding(.bottom, 8)
             // Parts it from the bar's controls under it, set in from the box's sides, as the
             // line between the strip and the sidebar is set in from its ends.
-            Divider().padding(.horizontal, 14)
+            if state.barShown { Divider().padding(.horizontal, 14) }
         }
         .background(Color(nsColor: Theme.background))
         // Laid out at its full height and uncovered as it slides, so the shell isn't told

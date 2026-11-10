@@ -212,6 +212,8 @@ struct QuillCommands: Commands {
             Picker("Start in Terminal", selection: $state.terminalAgent) {
                 ForEach(TerminalAgent.allCases) { Text($0.rawValue).tag($0) }
             }
+            // The way back to the bar once it's hidden, as its own menus go with it.
+            Toggle("Show Bottom Bar", isOn: $state.barShown)
             Divider()
             Toggle("Focus Mode", isOn: $state.focusEnabled)
                 .keyboardShortcut(Shortcuts.focus)

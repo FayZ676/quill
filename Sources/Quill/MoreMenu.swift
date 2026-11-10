@@ -28,6 +28,15 @@ enum MoreMenu {
         }
 
         menu.addItem(.separator())
+        menu.addItem(header("Bar"))
+        menu.addItem(submenu("Show in Bar", BarItem.allCases.map { item in
+            ActionItem(item.title, on: state.barItems.contains(item)) {
+                if state.barItems.contains(item) { state.barItems.remove(item) } else { state.barItems.insert(item) }
+            }
+        }))
+        menu.addItem(ActionItem("Hide Bar") { state.barShown = false })
+
+        menu.addItem(.separator())
         menu.addItem(header("Spelling and Grammar"))
         menu.addItem(toggle("Check Spelling While Typing", \.checkSpelling, state))
         menu.addItem(toggle("Check Grammar With Spelling", \.checkGrammar, state))

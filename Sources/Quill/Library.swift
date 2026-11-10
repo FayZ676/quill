@@ -38,6 +38,11 @@ final class AppState: ObservableObject {
     @Published var appearance: Appearance {
         didSet { defaults.set(appearance.rawValue, forKey: "appearance"); appearance.apply() }
     }
+    /// The bar at the bottom, and the buttons in it; ⋯ is always there while the bar is.
+    @Published var barShown: Bool { didSet { defaults.set(barShown, forKey: "barShown") } }
+    @Published var barItems: Set<BarItem> {
+        didSet { defaults.set(BarItem.allCases.filter(barItems.contains).map(\.rawValue), forKey: "barItems") }
+    }
 
     /// Whether the sidebar is out beside the page. Animate changes so it slides.
     @Published var sidebarShown = true
@@ -118,6 +123,8 @@ final class AppState: ObservableObject {
         fontSize = size > 0 ? size : Self.defaultFontSize
         editorFont = EditorFont(saved: defaults.string(forKey: "editorFont"))
         appearance = Appearance(rawValue: defaults.string(forKey: "appearance") ?? "") ?? .system
+        barShown = defaults.object(forKey: "barShown") as? Bool ?? true
+        barItems = defaults.stringArray(forKey: "barItems").map { Set($0.compactMap(BarItem.init)) } ?? BarItem.standard
         textInput = TextInput.load(defaults)
         terminalAgent = TerminalAgent(rawValue: defaults.string(forKey: "terminalAgent") ?? "") ?? .claude
         let terminalSize = defaults.double(forKey: "terminalFontSize")
@@ -821,7 +828,7 @@ final class AppState: ObservableObject {
 
     Quill is a quiet place to write. Your documents are plain **Markdown** files in a folder on your Mac, so they're yours forever. Everything saves automatically.
 
-    Press ⌘/ at any time for every shortcut and all the Markdown, or click ⌘ in the bar at the bottom.
+    Press ⌘/ at any time for every shortcut and all the Markdown, or click ⌘ in the bar at the bottom. Right-click that bar to choose what's in it, or to hide it.
 
     ## Focus
 

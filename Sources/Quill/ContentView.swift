@@ -65,6 +65,8 @@ struct ContentView: View {
         }
         // From here rather than the button, so it opens just as Go To does.
         .searchPanel(isPresented: $state.showingCheatSheet, over: page) { CheatSheet() }
+        // Back to writing once the sheet is put away.
+        .onChange(of: state.showingCheatSheet) { if !$0 { state.focusEditor() } }
         .sheet(item: $state.newItem) { NewItemPanel(item: $0) }
         // Like iA Writer, the library slides away once you start typing and stays put
         // until you bring it back, and so does the terminal. A turn later, as `$hidden`
@@ -146,12 +148,16 @@ struct ContentView: View {
             .padding(Boxed.inset)
             // The bar at the bottom's box, which takes in the terminal as it opens rather than
             // the terminal having one of its own, as the strip's takes in the sidebar.
+            // With the bar hidden and the terminal closed, there's nothing to box.
+            let boxed = state.barShown || state.terminalShown
             VStack(spacing: 0) {
                 // Always there, if folded away, so its shells keep running while it's closed.
                 TerminalPane()
                 // Under the page and the terminal, as in VS Code, but beside the sidebar, so it
                 // runs the full width only when the sidebar is away.
-                StatusBar(stats: state.stats, chrome: state.chrome)
+                if state.barShown {
+                    StatusBar(stats: state.stats, chrome: state.chrome)
+                }
             }
             .background(Color(nsColor: Theme.background))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -159,9 +165,10 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(Color(nsColor: .separatorColor))
                     .modifier(FadesWithChrome(chrome: state.chrome))
+                    .opacity(boxed ? 1 : 0)
                     .allowsHitTesting(false)
             }
-            .padding(Boxed.inset)
+            .padding(boxed ? Boxed.inset : 0)
         }
         // Gives way to the sidebar rather than pushing it off the window.
         .frame(minWidth: 0, maxWidth: .infinity)
@@ -765,6 +772,35 @@ private struct FocusToggle: View {
     }
 }
 
+private struct TypewriterToggle: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        Button { state.typewriter.toggle() } label: {
+            Image(systemName: "text.aligncenter")
+                .toolbarIcon()
+                .foregroundStyle(state.typewriter ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.bare)
+        .help("Typewriter Scrolling (\(Shortcuts.typewriter.label))")
+    }
+}
+
+/// Swaps between light and dark, from whichever is on show, System's included.
+private struct AppearanceToggle: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        Button { state.appearance = dark ? .light : .dark } label: {
+            Image(systemName: dark ? "moon" : "sun.max").toolbarIcon()
+        }
+        .buttonStyle(.bare)
+        .help(dark ? "Switch to Light" : "Switch to Dark")
+    }
+}
+
 /// Opens the ⋯ menu (see MoreMenu) over itself, as it's in the bar at the bottom.
 private struct MoreButton: View {
     @EnvironmentObject var state: AppState
@@ -1110,29 +1146,69 @@ private struct EmptyEditor: View {
     }
 }
 
-/// A thin bar under the page, as in VS Code: the open note's length in the middle, and Focus,
-/// the cheat sheet, the terminal and the ⋯ menu on the right.
+/// What the bar at the bottom can show, in the order it shows them. ⋯ is always there, as it
+/// holds the rest.
+enum BarItem: String, CaseIterable {
+    case wordCount, focus, typewriter, appearance, cheatSheet, terminal
+
+    var title: String {
+        switch self {
+        case .wordCount: "Word Count"
+        case .focus: "Focus Mode"
+        case .typewriter: "Typewriter Scrolling"
+        case .appearance: "Light and Dark"
+        case .cheatSheet: "Cheat Sheet"
+        case .terminal: "Terminal"
+        }
+    }
+
+    /// What the bar showed before it could be changed.
+    static let standard: Set<BarItem> = [.wordCount, .focus, .cheatSheet, .terminal]
+}
+
+/// Picks what's in the bar at the bottom, from right-clicking it.
+private struct BarMenu: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        ForEach(BarItem.allCases, id: \.self) { item in
+            Toggle(item.title, isOn: Binding {
+                state.barItems.contains(item)
+            } set: { on in
+                if on { state.barItems.insert(item) } else { state.barItems.remove(item) }
+            })
+        }
+        Divider()
+        Button("Hide Bar") { state.barShown = false }
+    }
+}
+
+/// A thin bar under the page, as in VS Code: the open note's length in the middle, and the
+/// buttons you've picked and the ⋯ menu on the right.
 private struct StatusBar: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var stats: Stats
     @ObservedObject var chrome: ChromeFader
 
     var body: some View {
+        // Only with a note open: with nothing on the page, there's nothing to focus on or count.
+        let writing = state.openFile != nil && !state.showingGraph
         // As tall as the top bar, with its icons and its text's size, as the strip is wide.
         HStack(spacing: 6) {
             Spacer()
             // Moved down from the top bar, which is the tabs'.
-            // Only with a note open: with nothing on the page, there's nothing to focus on.
-            if state.openFile != nil, !state.showingGraph { FocusToggle() }
-            CheatSheetButton()
-            TerminalButton()
+            if writing, shows(.focus) { FocusToggle() }
+            if writing, shows(.typewriter) { TypewriterToggle() }
+            if shows(.appearance) { AppearanceToggle() }
+            if shows(.cheatSheet) { CheatSheetButton() }
+            if shows(.terminal) { TerminalButton() }
             if !state.showingGraph { MoreButton() }
         }
         .padding(.horizontal, 14)
         .frame(height: 48)
         // Centered under the page, whatever the buttons beside it.
         .overlay {
-            if state.openFile != nil, !state.showingGraph {
+            if writing, shows(.wordCount) {
                 let minutes = max(1, Int((Double(stats.words) / 230).rounded()))
                 Text("\(stats.words) words · \(minutes) min read")
                     .appFont(13)
@@ -1141,8 +1217,12 @@ private struct StatusBar: View {
             }
         }
         .background(Color(nsColor: Theme.background))
+        .contentShape(Rectangle())
+        .contextMenu { BarMenu() }
         .modifier(FadesWithChrome(chrome: chrome))
     }
+
+    private func shows(_ item: BarItem) -> Bool { state.barItems.contains(item) }
 }
 
 extension Image {
